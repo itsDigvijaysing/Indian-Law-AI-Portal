@@ -1,0 +1,11 @@
+Place your PDF files of Indian legal documents here.
+
+Examples:
+- Indian Penal Code (IPC).pdf
+- Criminal Procedure Code (CrPC).pdf
+- Civil Procedure Code (CPC).pdf
+- Constitution of India.pdf
+- Income Tax Act.pdf
+etc.
+
+The system will automatically process these files and create embeddings for the RAG system.

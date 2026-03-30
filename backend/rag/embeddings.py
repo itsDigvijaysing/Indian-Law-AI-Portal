@@ -11,6 +11,12 @@ from sentence_transformers import SentenceTransformer
 import google.generativeai as genai
 from loguru import logger
 
+# Import settings to ensure .env is loaded
+try:
+    from api.core.config import get_settings
+except ImportError:
+    from backend.api.core.config import get_settings
+
 
 class EmbeddingGenerator:
     """Generates embeddings for text chunks using various models"""
@@ -29,13 +35,15 @@ class EmbeddingGenerator:
                 logger.info(f"Loaded SentenceTransformer model: {self.model_name}")
             
             elif self.model_type == "google":
-                # Configure Google AI
-                api_key = os.getenv("GOOGLE_API_KEY")
-                if api_key:
+                # Get API key from settings (properly loads .env)
+                settings = get_settings()
+                api_key = settings.GOOGLE_API_KEY
+                
+                if api_key and api_key != "your_google_api_key_here":
                     genai.configure(api_key=api_key)
                     logger.info(f"Configured Google AI for embeddings: {self.model_name}")
                 else:
-                    logger.warning("GOOGLE_API_KEY not found, falling back to sentence-transformers")
+                    logger.warning("GOOGLE_API_KEY not configured, falling back to sentence-transformers")
                     self.model_type = "sentence-transformers"
                     self.model = SentenceTransformer("all-MiniLM-L6-v2")
             

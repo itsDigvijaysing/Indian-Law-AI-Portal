@@ -55,12 +55,17 @@ async def readiness_check(request: Request):
     Readiness check for deployment health monitoring.
     Returns 200 if the service is ready to handle requests.
     """
+    from fastapi.responses import JSONResponse
+    
     ai_service = getattr(request.app.state, 'ai_service', None)
     
     if ai_service and ai_service._initialized:
         return {"ready": True, "message": "Service is ready"}
     else:
-        return {"ready": False, "message": "Service is still initializing"}, 503
+        return JSONResponse(
+            status_code=503,
+            content={"ready": False, "message": "Service is still initializing"}
+        )
 
 
 @router.get("/live")

@@ -5,7 +5,7 @@ Pydantic models for API request and response validation.
 """
 
 from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from datetime import datetime
 
 
@@ -16,14 +16,15 @@ class QueryRequest(BaseModel):
     include_sources: bool = Field(True, description="Include source references in response")
     max_results: int = Field(10, ge=1, le=50, description="Maximum number of retrieval results")
     
-    class Config:
-        schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "query": "What is the punishment for theft under IPC?",
                 "include_sources": True,
                 "max_results": 10
             }
         }
+    )
 
 
 class SourceReference(BaseModel):
@@ -46,8 +47,8 @@ class QueryResponse(BaseModel):
     processing_time_ms: Optional[float] = Field(None, description="Query processing time in milliseconds")
     timestamp: datetime = Field(default_factory=datetime.now, description="Response timestamp")
     
-    class Config:
-        schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "answer": "According to Section 379 of the Indian Penal Code, theft is punishable with imprisonment of either description for a term which may extend to three years, or with fine, or with both.",
                 "confidence_score": 0.92,
@@ -64,6 +65,7 @@ class QueryResponse(BaseModel):
                 "timestamp": "2024-01-15T10:30:00Z"
             }
         }
+    )
 
 
 # Document Management Models
@@ -72,13 +74,14 @@ class DocumentUploadRequest(BaseModel):
     file_paths: List[str] = Field(..., description="List of file paths to process")
     force_reprocess: bool = Field(False, description="Force reprocessing even if already processed")
     
-    class Config:
-        schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "file_paths": ["/assets/IPC.pdf", "/assets/CrPC.pdf"],
                 "force_reprocess": False
             }
         }
+    )
 
 
 class DocumentProcessingResult(BaseModel):
@@ -126,14 +129,15 @@ class ErrorResponse(BaseModel):
     status_code: int = Field(..., description="HTTP status code")
     timestamp: datetime = Field(default_factory=datetime.now, description="Error timestamp")
     
-    class Config:
-        schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "error": "Query processing failed due to invalid input",
                 "status_code": 400,
                 "timestamp": "2024-01-15T10:30:00Z"
             }
         }
+    )
 
 
 # Agent Models

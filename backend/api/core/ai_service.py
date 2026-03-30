@@ -9,17 +9,27 @@ Central service that coordinates all AI components:
 """
 
 import os
+import sys
 import asyncio
 from typing import Dict, List, Any, Optional
 import google.generativeai as genai
 from loguru import logger
 
-from ..core.config import get_settings
-from ...adk import AgentRegistry, CriminalLawAgent, CivilLawAgent, ConstitutionalLawAgent, GeneralLegalAgent
-from ...rag import (
-    DocumentProcessor, EmbeddingGenerator, DocumentEmbedder, 
-    VectorDatabase, QueryReformulator, RAGFusionRetriever
-)
+# Handle imports for both module and direct execution
+try:
+    from .config import get_settings
+    from ...adk import AgentRegistry, CriminalLawAgent, CivilLawAgent, ConstitutionalLawAgent, GeneralLegalAgent
+    from ...rag import (
+        DocumentProcessor, EmbeddingGenerator, DocumentEmbedder, 
+        VectorDatabase, QueryReformulator, RAGFusionRetriever
+    )
+except ImportError:
+    from api.core.config import get_settings
+    from adk import AgentRegistry, CriminalLawAgent, CivilLawAgent, ConstitutionalLawAgent, GeneralLegalAgent
+    from rag import (
+        DocumentProcessor, EmbeddingGenerator, DocumentEmbedder, 
+        VectorDatabase, QueryReformulator, RAGFusionRetriever
+    )
 
 
 class AIService:
@@ -48,7 +58,7 @@ class AIService:
         try:
             logger.info("Initializing AI Service components...")
             
-            # 1. Initialize Google AI client
+            # 1. Initialize Google AI client (optional - can work without)
             await self._initialize_llm_client()
             
             # 2. Initialize embedding components
@@ -57,7 +67,7 @@ class AIService:
             # 3. Initialize vector database
             await self._initialize_vector_database()
             
-            # 4. Initialize agents
+            # 4. Initialize agents (can work with None llm_client for basic functions)
             await self._initialize_agents()
             
             # 5. Initialize RAG components
@@ -70,7 +80,12 @@ class AIService:
             await self._load_existing_data()
             
             self._initialized = True
-            logger.info("AI Service initialization completed successfully")
+            
+            if self.llm_client:
+                logger.info("AI Service initialization completed successfully (full mode)")
+            else:
+                logger.info("AI Service initialization completed (limited mode - no LLM)")
+                logger.info("Add your Google API key to .env to enable full features")
             
         except Exception as e:
             logger.error(f"Error initializing AI Service: {e}")
@@ -79,27 +94,38 @@ class AIService:
     async def _initialize_llm_client(self):
         """Initialize Google Generative AI client"""
         try:
+            # Check if API key is valid
+            if not self.settings.GOOGLE_API_KEY or self.settings.GOOGLE_API_KEY == "your_google_api_key_here":
+                logger.warning("Google API key not configured. LLM features will be limited.")
+                logger.warning("Please set GOOGLE_API_KEY in your .env file")
+                self.llm_client = None
+                return
+            
             genai.configure(api_key=self.settings.GOOGLE_API_KEY)
             self.llm_client = genai.GenerativeModel(self.settings.LLM_MODEL)
             
-            # Test the connection
-            test_response = self.llm_client.generate_content("Hello, this is a test.")
-            logger.info(f"LLM client initialized successfully: {self.settings.LLM_MODEL}")
+            # Skip test call to save quota - just verify model is created
+            logger.info(f"LLM client initialized: {self.settings.LLM_MODEL}")
             
         except Exception as e:
-            logger.error(f"Error initializing LLM client: {e}")
-            raise
+            logger.warning(f"Could not initialize LLM client: {e}")
+            logger.warning("The API will start but LLM features will be limited.")
+            self.llm_client = None
     
     async def _initialize_embedding_components(self):
         """Initialize embedding generator and document embedder"""
         try:
             # Determine embedding model type and name
-            if self.settings.EMBEDDING_MODEL.startswith("text-embedding"):
+            # Google models: text-embedding-*, gemini-embedding-*, embedding-*
+            embedding_model = self.settings.EMBEDDING_MODEL
+            if (embedding_model.startswith("text-embedding") or 
+                embedding_model.startswith("gemini-embedding") or
+                embedding_model.startswith("embedding")):
                 model_type = "google"
-                model_name = self.settings.EMBEDDING_MODEL
+                model_name = embedding_model
             else:
                 model_type = "sentence-transformers"
-                model_name = self.settings.EMBEDDING_MODEL
+                model_name = embedding_model
             
             self.embedding_generator = EmbeddingGenerator(
                 model_type=model_type,

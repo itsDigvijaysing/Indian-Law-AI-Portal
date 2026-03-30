@@ -5,48 +5,72 @@ Handles application settings and environment variables.
 """
 
 import os
+from pathlib import Path
 from typing import Optional
-from pydantic import BaseSettings, Field
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
+
+
+def _find_env_file() -> str:
+    """Find .env file - check current dir, then parent (project root)"""
+    current = Path.cwd() / ".env"
+    if current.exists():
+        return str(current)
+    
+    # Check parent directory (when running from backend/)
+    parent = Path.cwd().parent / ".env"
+    if parent.exists():
+        return str(parent)
+    
+    # Check relative to this file's location
+    config_dir = Path(__file__).parent
+    project_root = config_dir.parent.parent.parent / ".env"
+    if project_root.exists():
+        return str(project_root)
+    
+    return ".env"  # Default fallback
 
 
 class Settings(BaseSettings):
     """Application settings"""
     
+    model_config = SettingsConfigDict(
+        env_file=_find_env_file(),
+        case_sensitive=True,
+        extra="ignore"
+    )
+    
     # Google AI Configuration
-    GOOGLE_API_KEY: str = Field(..., env="GOOGLE_API_KEY")
-    GOOGLE_PROJECT_ID: Optional[str] = Field(None, env="GOOGLE_PROJECT_ID")
+    GOOGLE_API_KEY: str = Field(default="your_google_api_key_here")
+    GOOGLE_PROJECT_ID: Optional[str] = Field(default=None)
     
     # Model Configuration
-    LLM_MODEL: str = Field("gemini-1.5-pro", env="LLM_MODEL")
-    EMBEDDING_MODEL: str = Field("text-embedding-004", env="EMBEDDING_MODEL")
+    LLM_MODEL: str = Field(default="gemini-2.0-flash")
+    EMBEDDING_MODEL: str = Field(default="gemini-embedding-001")
     
     # Vector Database Configuration
-    VECTOR_DB_TYPE: str = Field("faiss", env="VECTOR_DB_TYPE")
-    VECTOR_DB_PATH: str = Field("./vector_db/", env="VECTOR_DB_PATH")
-    VECTOR_DIMENSION: int = Field(768, env="VECTOR_DIMENSION")
+    VECTOR_DB_TYPE: str = Field(default="faiss")
+    VECTOR_DB_PATH: str = Field(default="./vector_db/")
+    VECTOR_DIMENSION: int = Field(default=768)
     
     # RAG Configuration
-    RAG_FUSION_QUERIES: int = Field(3, env="RAG_FUSION_QUERIES")
-    TOP_K_RETRIEVAL: int = Field(10, env="TOP_K_RETRIEVAL")
-    CHUNK_SIZE: int = Field(500, env="CHUNK_SIZE")
-    CHUNK_OVERLAP: int = Field(50, env="CHUNK_OVERLAP")
+    RAG_FUSION_QUERIES: int = Field(default=3)
+    TOP_K_RETRIEVAL: int = Field(default=10)
+    CHUNK_SIZE: int = Field(default=500)
+    CHUNK_OVERLAP: int = Field(default=50)
     
     # API Configuration
-    API_HOST: str = Field("0.0.0.0", env="API_HOST")
-    API_PORT: int = Field(8000, env="API_PORT")
-    DEBUG_MODE: bool = Field(True, env="DEBUG_MODE")
+    API_HOST: str = Field(default="0.0.0.0")
+    API_PORT: int = Field(default=8000)
+    DEBUG_MODE: bool = Field(default=True)
     
     # Logging Configuration
-    LOG_LEVEL: str = Field("INFO", env="LOG_LEVEL")
-    LOG_FILE: str = Field("logs/app.log", env="LOG_FILE")
+    LOG_LEVEL: str = Field(default="INFO")
+    LOG_FILE: str = Field(default="logs/app.log")
     
     # Assets Configuration
-    ASSETS_PATH: str = Field("./assets/", env="ASSETS_PATH")
-    
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
+    ASSETS_PATH: str = Field(default="./assets/")
 
 
 @lru_cache()

@@ -94,6 +94,24 @@ RESPONSE:
         confidence += min(0.3, matches * 0.1)
         
         return min(1.0, confidence)
+    
+    def _extract_sources(self, context: List[str]) -> List[str]:
+        """Extract source references from context"""
+        sources = []
+        for ctx in context:
+            # Simple extraction - can be enhanced
+            if "section" in ctx.lower():
+                # Extract section references
+                words = ctx.split()
+                for i, word in enumerate(words):
+                    if word.lower() == "section" and i + 1 < len(words):
+                        sources.append(f"Section {words[i+1]}")
+            
+            # Add more source extraction logic as needed
+            if len(ctx) > 50:  # Avoid very short context
+                sources.append(ctx[:100] + "..." if len(ctx) > 100 else ctx)
+        
+        return sources[:5]  # Limit to 5 sources
 
 
 class AgentRegistry:

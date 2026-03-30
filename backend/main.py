@@ -5,6 +5,12 @@ Main entry point for the Indian Law AI Portal API.
 """
 
 import os
+import sys
+
+# Add parent directory to path for imports when running directly
+if __name__ == "__main__":
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,9 +18,15 @@ from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 from loguru import logger
 
-from .routers import query_router, admin_router, health_router
-from .core.config import get_settings
-from .core.ai_service import AIService
+# Handle imports for both module and direct execution
+try:
+    from .api.routers import query_router, admin_router, health_router
+    from .api.core.config import get_settings
+    from .api.core.ai_service import AIService
+except ImportError:
+    from api.routers import query_router, admin_router, health_router
+    from api.core.config import get_settings
+    from api.core.ai_service import AIService
 
 
 # Global AI service instance
@@ -111,6 +123,11 @@ async def root():
 
 
 if __name__ == "__main__":
+    # Load .env file from project root
+    from dotenv import load_dotenv
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    load_dotenv(os.path.join(project_root, ".env"))
+    
     settings = get_settings()
     uvicorn.run(
         "main:app",

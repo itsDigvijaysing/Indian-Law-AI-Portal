@@ -41,6 +41,12 @@ def setup_environment():
 def install_backend_dependencies():
     """Install Python dependencies"""
     print("Installing Python dependencies...")
+    
+    # Check if we're in a conda environment
+    conda_env = os.environ.get('CONDA_DEFAULT_ENV')
+    if conda_env:
+        print(f"Using conda environment: {conda_env}")
+    
     try:
         subprocess.run([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"], 
                       check=True, capture_output=True, text=True)
@@ -81,23 +87,17 @@ def display_usage():
     print("   - Place PDF files in the 'assets/' folder")
     print("   - Examples: IPC.pdf, CrPC.pdf, Constitution.pdf")
     
-    print("\n3. Start the Backend API:")
-    print("   cd backend")
-    print("   python main.py")
-    print("   # API will be available at http://localhost:8000")
+    print("\n3. Start the Application:")
+    print("   ./start_dev.sh")
+    print("   # Or manually:")
+    print("   cd backend && python main.py")
+    print("   # In another terminal:")
+    print("   cd frontend && npm start")
     
-    print("\n4. Start the Frontend (in a new terminal):")
-    print("   cd frontend")
-    print("   npm start")
-    print("   # Frontend will be available at http://localhost:3000")
-    
-    print("\n5. Process Documents (via API or admin interface):")
-    print("   - Use the admin endpoints to process PDF documents")
-    print("   - Or use the frontend interface once both servers are running")
-    
-    print("\n📚 API Documentation:")
-    print("   - Swagger UI: http://localhost:8000/docs")
-    print("   - ReDoc: http://localhost:8000/redoc")
+    print("\n4. Access the Application:")
+    print("   - Frontend: http://localhost:3000")
+    print("   - API: http://localhost:8000")
+    print("   - API Docs: http://localhost:8000/docs")
     
     print("\n🔧 System Architecture:")
     print("   ├── Agent Development Kit (ADK)")
@@ -113,7 +113,7 @@ def display_usage():
     print("   └── FastAPI Backend + React Frontend")
     
     print("\n⚠️  IMPORTANT NOTES:")
-    print("   - Requires Google AI API key for embeddings and LLM")
+    print("   - Requires Google AI API key for LLM features")
     print("   - Add legal PDF documents to assets/ folder")
     print("   - First document processing may take time")
     print("   - This is for educational/research purposes")
@@ -127,13 +127,19 @@ def main():
     create_directories()
     setup_environment()
     
-    # Check if we should install dependencies
-    install_deps = input("\nInstall Python dependencies now? (y/n): ").lower().strip()
-    if install_deps in ['y', 'yes']:
+    # Check if running interactively
+    if sys.stdin.isatty():
+        install_deps = input("\nInstall Python dependencies now? (y/n): ").lower().strip()
+        if install_deps in ['y', 'yes']:
+            install_backend_dependencies()
+        
+        setup_frontend_deps = input("Setup frontend dependencies now? (y/n): ").lower().strip()
+        if setup_frontend_deps in ['y', 'yes']:
+            setup_frontend()
+    else:
+        # Non-interactive mode - install everything
+        print("\nRunning in non-interactive mode. Installing all dependencies...")
         install_backend_dependencies()
-    
-    setup_frontend_deps = input("Setup frontend dependencies now? (y/n): ").lower().strip()
-    if setup_frontend_deps in ['y', 'yes']:
         setup_frontend()
     
     display_usage()

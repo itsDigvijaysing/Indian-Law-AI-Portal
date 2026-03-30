@@ -5,6 +5,10 @@
 echo "🚀 Starting Indian Law AI Portal Development Environment"
 echo "======================================================="
 
+# Get the script directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
 # Check if .env file exists
 if [ ! -f ".env" ]; then
     echo "⚠️  .env file not found. Creating from template..."
@@ -14,20 +18,31 @@ if [ ! -f ".env" ]; then
     echo ""
 fi
 
+# Create necessary directories
+mkdir -p logs vector_db assets
+
 # Function to start backend
 start_backend() {
     echo "🐍 Starting Python Backend..."
-    cd backend
-    if [ ! -d "venv" ]; then
-        echo "Creating Python virtual environment..."
-        python3 -m venv venv
+    cd "$SCRIPT_DIR/backend"
+    
+    # Check if conda environment is active
+    if [ -n "$CONDA_DEFAULT_ENV" ]; then
+        echo "Using conda environment: $CONDA_DEFAULT_ENV"
+        pip install -q -r ../requirements.txt 2>/dev/null
+    else
+        # Fall back to venv if conda not active
+        if [ ! -d "venv" ]; then
+            echo "Creating Python virtual environment..."
+            python3 -m venv venv
+        fi
+        source venv/bin/activate
+        pip install -q -r ../requirements.txt 2>/dev/null
     fi
     
-    source venv/bin/activate
-    pip install -r ../requirements.txt
     python main.py &
     BACKEND_PID=$!
-    cd ..
+    cd "$SCRIPT_DIR"
     echo "✅ Backend started with PID: $BACKEND_PID"
     echo "📡 API available at: http://localhost:8000"
     echo "📚 API docs at: http://localhost:8000/docs"
@@ -36,14 +51,14 @@ start_backend() {
 # Function to start frontend
 start_frontend() {
     echo "⚛️  Starting React Frontend..."
-    cd frontend
+    cd "$SCRIPT_DIR/frontend"
     if [ ! -d "node_modules" ]; then
         echo "Installing npm dependencies..."
         npm install
     fi
     npm start &
     FRONTEND_PID=$!
-    cd ..
+    cd "$SCRIPT_DIR"
     echo "✅ Frontend started with PID: $FRONTEND_PID"
     echo "🌐 Frontend available at: http://localhost:3000"
 }
@@ -65,9 +80,6 @@ cleanup() {
 
 # Set up signal handlers
 trap cleanup SIGINT SIGTERM
-
-# Create necessary directories
-mkdir -p logs vector_db assets
 
 # Start services
 start_backend

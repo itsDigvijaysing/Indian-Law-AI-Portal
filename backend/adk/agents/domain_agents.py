@@ -6,7 +6,7 @@ Each agent has domain expertise and can provide specialized reasoning.
 """
 
 from typing import List
-from .base_agent import BaseAgent, AgentResponse
+from ..base_agent import BaseAgent, AgentResponse
 from loguru import logger
 import google.generativeai as genai
 
@@ -33,6 +33,16 @@ class CriminalLawAgent(BaseAgent):
         return any(keyword in query_lower or keyword in context_text for keyword in keywords)
     
     def process_query(self, query: str, retrieved_context: List[str]) -> AgentResponse:
+        # Check if LLM client is available
+        if self.llm_client is None:
+            return AgentResponse(
+                answer="LLM service is not configured. Please add your Google API key to the .env file to enable AI-powered responses.",
+                confidence_score=0.0,
+                sources=self._extract_sources(retrieved_context),
+                agent_type="Criminal Law",
+                reasoning_steps=["LLM client not available - API key required"]
+            )
+        
         prompt = self._build_criminal_law_prompt(query, retrieved_context)
         
         try:
@@ -116,6 +126,16 @@ class CivilLawAgent(BaseAgent):
         return any(keyword in query_lower or keyword in context_text for keyword in keywords)
     
     def process_query(self, query: str, retrieved_context: List[str]) -> AgentResponse:
+        # Check if LLM client is available
+        if self.llm_client is None:
+            return AgentResponse(
+                answer="LLM service is not configured. Please add your Google API key to the .env file to enable AI-powered responses.",
+                confidence_score=0.0,
+                sources=self._extract_sources(retrieved_context),
+                agent_type="Civil Law",
+                reasoning_steps=["LLM client not available - API key required"]
+            )
+        
         prompt = self._build_civil_law_prompt(query, retrieved_context)
         
         try:
@@ -200,6 +220,16 @@ class ConstitutionalLawAgent(BaseAgent):
         return any(keyword in query_lower or keyword in context_text for keyword in keywords)
     
     def process_query(self, query: str, retrieved_context: List[str]) -> AgentResponse:
+        # Check if LLM client is available
+        if self.llm_client is None:
+            return AgentResponse(
+                answer="LLM service is not configured. Please add your Google API key to the .env file to enable AI-powered responses.",
+                confidence_score=0.0,
+                sources=self._extract_sources(retrieved_context),
+                agent_type="Constitutional Law",
+                reasoning_steps=["LLM client not available - API key required"]
+            )
+        
         prompt = self._build_constitutional_prompt(query, retrieved_context)
         
         try:
@@ -276,6 +306,16 @@ class GeneralLegalAgent(BaseAgent):
         return True
     
     def process_query(self, query: str, retrieved_context: List[str]) -> AgentResponse:
+        # Check if LLM client is available
+        if self.llm_client is None:
+            return AgentResponse(
+                answer="LLM service is not configured. Please add your Google API key to the .env file to enable AI-powered responses.",
+                confidence_score=0.0,
+                sources=self._extract_sources(retrieved_context),
+                agent_type="General Legal",
+                reasoning_steps=["LLM client not available - API key required"]
+            )
+        
         prompt = self._build_general_prompt(query, retrieved_context)
         
         try:
@@ -326,26 +366,3 @@ Instructions:
 
 RESPONSE:
 """
-
-
-# Helper method for all agents
-def _extract_sources(self, context: List[str]) -> List[str]:
-    """Extract source references from context"""
-    sources = []
-    for ctx in context:
-        # Simple extraction - can be enhanced
-        if "section" in ctx.lower():
-            # Extract section references
-            words = ctx.split()
-            for i, word in enumerate(words):
-                if word.lower() == "section" and i + 1 < len(words):
-                    sources.append(f"Section {words[i+1]}")
-        
-        # Add more source extraction logic as needed
-        if len(ctx) > 50:  # Avoid very short context
-            sources.append(ctx[:100] + "..." if len(ctx) > 100 else ctx)
-    
-    return sources[:5]  # Limit to 5 sources
-
-# Patch the method to all agent classes
-BaseAgent._extract_sources = _extract_sources

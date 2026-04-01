@@ -1,0 +1,107 @@
+.document-manager {
+  background: var(--bg-card);
+  padding: 1.25rem;
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow);
+}
+
+.dm-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.dm-header h4 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 1rem;
+}
+
+.dm-process-btn {
+  padding: 4px 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  border: 1px solid var(--primary-color);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--primary-color);
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.2s, color 0.2s;
+}
+
+.dm-process-btn:hover:not(:disabled) {
+  background: var(--primary-color);
+  color: white;
+}
+
+.dm-process-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.dm-message {
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  margin-bottom: 0.75rem;
+}
+
+.dm-message.success {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.dm-message.error {
+  background: #ffebee;
+  color: #c62828;
+}
+
+.dm-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.dm-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.6rem;
+  border-radius: 6px;
+  margin-bottom: 0.3rem;
+  background: var(--bg-primary);
+  font-size: 0.85rem;
+}
+
+.dm-icon {
+  background: var(--primary-color);
+  color: white;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.dm-name {
+  flex: 1;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dm-chunks {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.dm-empty {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  font-style: italic;
+  margin: 0;
+}

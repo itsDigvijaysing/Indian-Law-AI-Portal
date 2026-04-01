@@ -47,9 +47,8 @@ class DocumentProcessor:
         text = re.sub(r'\n\d+\n', '\n', text)  # Remove standalone page numbers
         text = re.sub(r'Page \d+ of \d+', '', text, flags=re.IGNORECASE)
         
-        # Fix common OCR errors
-        text = text.replace('|', 'I')  # Common OCR error
-        text = text.replace('0', 'O', )  # Only in certain contexts
+        # Fix common OCR errors in non-numeric contexts
+        text = re.sub(r'(?<![0-9])\|(?![0-9])', 'I', text)  # '|' → 'I' only outside numbers
         
         # Normalize section references
         text = re.sub(r'Section\s+(\d+)', r'Section \1', text, flags=re.IGNORECASE)
@@ -201,7 +200,7 @@ class TextPreprocessor:
         """Identify the type of legal document based on content"""
         text_lower = text.lower()
         
-        if any(term in text_lower for term in ['indian penal code', 'ipc', 'punishment', 'offense']):
+        if any(term in text_lower for term in ['indian penal code', 'ipc', 'punishment', 'offense', 'bharatiya nyaya sanhita', 'bns', 'bharatiya nagarik suraksha', 'bnss']):
             return "Criminal Law"
         elif any(term in text_lower for term in ['civil procedure', 'cpc', 'suit', 'decree']):
             return "Civil Law"  

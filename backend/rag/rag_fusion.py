@@ -7,7 +7,6 @@ for improved retrieval coverage.
 
 import re
 from typing import List, Dict, Any
-import google.generativeai as genai
 from loguru import logger
 
 
@@ -108,13 +107,23 @@ Generate {self.num_reformulations} reformulations as a numbered list:
             ("indian penal code", "ipc"),
             ("section", "provision"),
             ("provision", "section"),
-            
+
             # Procedure variations
             ("crpc", "criminal procedure code"),
             ("cpc", "civil procedure code"),
             ("criminal procedure", "crpc"),
             ("civil procedure", "cpc"),
-            
+
+            # BNS/BNSS ↔ IPC/CrPC cross-code mappings
+            ("bns", "bharatiya nyaya sanhita"),
+            ("bharatiya nyaya sanhita", "bns"),
+            ("bnss", "bharatiya nagarik suraksha sanhita"),
+            ("bharatiya nagarik suraksha sanhita", "bnss"),
+            ("ipc", "bharatiya nyaya sanhita"),
+            ("bns", "indian penal code"),
+            ("crpc", "bharatiya nagarik suraksha sanhita"),
+            ("bnss", "criminal procedure code"),
+
             # Legal concept variations
             ("punishment", "penalty"),
             ("penalty", "punishment"),
@@ -122,7 +131,7 @@ Generate {self.num_reformulations} reformulations as a numbered list:
             ("crime", "offense"),
             ("bail", "release on bail"),
             ("arrest", "apprehension"),
-            
+
             # Question reformulations
             ("what is", "explain"),
             ("explain", "what is"),

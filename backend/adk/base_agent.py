@@ -84,7 +84,7 @@ RESPONSE:
         confidence = 0.5
         
         # Check if response contains specific legal references
-        if any(keyword in response.lower() for keyword in ['section', 'article', 'ipc', 'cpc', 'crpc']):
+        if any(keyword in response.lower() for keyword in ['section', 'article', 'ipc', 'cpc', 'crpc', 'bns', 'bnss', 'sanhita']):
             confidence += 0.2
         
         # Check if context seems relevant to domain
@@ -95,6 +95,44 @@ RESPONSE:
         
         return min(1.0, confidence)
     
+    def _build_no_llm_response(self, retrieved_context: List[str]) -> AgentResponse:
+        """Build an informative response when LLM is not available, using RAG results."""
+        sources = self._extract_sources(retrieved_context)
+
+        if retrieved_context:
+            snippets = []
+            for i, ctx in enumerate(retrieved_context[:3]):
+                snippet = ctx[:300].strip()
+                if len(ctx) > 300:
+                    snippet += "..."
+                snippets.append(f"**Passage {i+1}:** {snippet}")
+
+            answer = (
+                f"AI analysis is unavailable (no API key configured). "
+                f"Based on document retrieval, here are the {min(3, len(retrieved_context))} most relevant legal text passages:\n\n"
+                + "\n\n".join(snippets)
+                + "\n\nTo get AI-powered analysis of these sources, add your Google API key to the .env file."
+            )
+            confidence = 0.3
+        else:
+            answer = (
+                "AI analysis is unavailable (no API key configured) and no relevant documents were found. "
+                "Please add your Google API key to .env and ensure legal documents are loaded."
+            )
+            confidence = 0.0
+
+        return AgentResponse(
+            answer=answer,
+            confidence_score=confidence,
+            sources=sources,
+            agent_type=self.domain,
+            reasoning_steps=[
+                "LLM not available - returning raw retrieval results",
+                f"Found {len(retrieved_context)} relevant passages",
+                "Passages ranked by RAG Fusion scoring"
+            ]
+        )
+
     def _extract_sources(self, context: List[str]) -> List[str]:
         """Extract source references from context"""
         sources = []

@@ -11,6 +11,7 @@ Central service that coordinates all AI components:
 import os
 import sys
 import asyncio
+from pathlib import Path
 from typing import Dict, List, Any, Optional
 import google.generativeai as genai
 from loguru import logger
@@ -78,7 +79,10 @@ class AIService:
             
             # 7. Load existing data if available
             await self._load_existing_data()
-            
+
+            # 8. Auto-ingest new documents from assets
+            await self._auto_ingest_documents()
+
             self._initialized = True
             
             if self.llm_client:
@@ -227,6 +231,45 @@ class AIService:
         except Exception as e:
             logger.error(f"Error loading existing data: {e}")
     
+    async def _auto_ingest_documents(self):
+        """Auto-detect and ingest new PDFs from assets directory on startup"""
+        assets_path = self.settings.ASSETS_PATH
+        if not os.path.exists(assets_path):
+            logger.info("Assets directory not found, skipping auto-ingestion")
+            return
+
+        pdf_files = [f for f in os.listdir(assets_path) if f.lower().endswith('.pdf')]
+        if not pdf_files:
+            logger.info("No PDF files found in assets directory")
+            return
+
+        # Determine which documents are already ingested
+        existing_docs = set()
+        if self.vector_db and self.vector_db.metadata:
+            for meta in self.vector_db.metadata:
+                existing_docs.add(meta.get('document', ''))
+
+        # Find new files not yet in the vector DB
+        new_files = []
+        for pdf_file in pdf_files:
+            stem = Path(pdf_file).stem
+            if stem not in existing_docs:
+                new_files.append(os.path.join(assets_path, pdf_file))
+
+        if not new_files:
+            logger.info(f"All {len(pdf_files)} PDFs already ingested")
+            return
+
+        logger.info(f"Auto-ingesting {len(new_files)} new PDF documents...")
+        try:
+            result = await self.add_documents(new_files)
+            logger.info(
+                f"Auto-ingestion complete: {len(result['processed'])} processed, "
+                f"{len(result['failed'])} failed, {result['total_chunks']} chunks"
+            )
+        except Exception as e:
+            logger.error(f"Error during auto-ingestion: {e}")
+
     async def process_query(self, query: str) -> Dict[str, Any]:
         """
         Main query processing pipeline:
@@ -262,7 +305,7 @@ class AIService:
                 response = selected_agent.process_query(query, context_texts)
                 
                 # Add retrieval metadata
-                response_dict = response.dict()
+                response_dict = response.model_dump()
                 response_dict['retrieved_documents'] = len(retrieved_docs)
                 response_dict['retrieval_sources'] = [
                     {
@@ -289,14 +332,123 @@ class AIService:
                 
         except Exception as e:
             logger.error(f"Error processing query: {e}")
+            error_str = str(e).lower()
+            if any(term in error_str for term in ['quota', 'resourceexhausted', '429', 'rate limit']):
+                message = "API quota exceeded. Your retrieved documents are still available but AI analysis is temporarily unavailable."
+            elif any(term in error_str for term in ['connection', 'timeout', 'unreachable', 'dns']):
+                message = "Could not reach the AI service. Please check your network connection and try again."
+            else:
+                message = f"An error occurred while processing your query ({type(e).__name__}). Please try again later."
             return {
-                "answer": "I encountered an error while processing your query. Please try again later.",
+                "answer": message,
                 "confidence_score": 0.0,
                 "sources": [],
                 "agent_type": "Error",
                 "error": str(e)
             }
     
+    async def process_advanced_query(
+        self,
+        query: str,
+        filters: Optional[Dict] = None,
+        fusion_queries: Optional[int] = None,
+        explain_reasoning: bool = False,
+        confidence_threshold: Optional[float] = None
+    ) -> Dict[str, Any]:
+        """
+        Advanced query processing with filters, custom fusion, and reasoning.
+        """
+        if not self._initialized:
+            raise RuntimeError("AI Service not initialized")
+
+        try:
+            logger.info(f"Processing advanced query: {query[:100]}...")
+
+            # Temporarily override fusion query count if specified
+            original_num = self.query_reformulator.num_reformulations
+            if fusion_queries is not None:
+                self.query_reformulator.num_reformulations = fusion_queries
+
+            try:
+                # Step 1: Retrieve documents
+                retrieved_docs = self.rag_retriever.retrieve(
+                    query=query,
+                    top_k=self.settings.TOP_K_RETRIEVAL
+                )
+
+                # Capture reformulated queries for explain mode
+                reformulated = self.query_reformulator.reformulate_query(query) if explain_reasoning else None
+            finally:
+                # Restore original fusion count
+                self.query_reformulator.num_reformulations = original_num
+
+            # Step 2: Apply document type filters
+            if filters and filters.get('document_types'):
+                allowed_types = set(filters['document_types'])
+                retrieved_docs = [
+                    doc for doc in retrieved_docs
+                    if doc.get('document', '') in allowed_types
+                ]
+
+            # Step 3: Extract context and select agent
+            context_texts = [doc.get('text', '') for doc in retrieved_docs]
+            selected_agent = self.agent_registry.select_agent(query, context_texts)
+            if not selected_agent:
+                agents = self.agent_registry.get_all_agents()
+                selected_agent = next((a for a in agents if a.name == "General Legal Agent"), None)
+
+            # Step 4: Generate response
+            if selected_agent:
+                response = selected_agent.process_query(query, context_texts)
+                response_dict = response.model_dump()
+
+                # Confidence threshold warning
+                if confidence_threshold and response_dict.get('confidence_score', 0) < confidence_threshold:
+                    response_dict['answer'] += (
+                        f"\n\n**Note:** The confidence score ({response_dict['confidence_score']:.1%}) "
+                        f"is below the requested threshold ({confidence_threshold:.1%})."
+                    )
+
+                # Add retrieval metadata
+                response_dict['retrieved_documents'] = len(retrieved_docs)
+                response_dict['retrieval_sources'] = [
+                    {
+                        'document': doc.get('document', ''),
+                        'section': doc.get('section', ''),
+                        'similarity_score': doc.get('similarity_score', 0),
+                        'fusion_score': doc.get('fusion_score', 0)
+                    }
+                    for doc in retrieved_docs[:5]
+                ]
+
+                # Add advanced metadata
+                if explain_reasoning:
+                    response_dict['reformulated_queries'] = reformulated
+                    response_dict['fusion_statistics'] = self.rag_retriever.get_fusion_statistics(retrieved_docs)
+
+                if filters:
+                    response_dict['applied_filters'] = filters
+
+                logger.info(f"Advanced query processed by {selected_agent.name}")
+                return response_dict
+
+            return {
+                "answer": "No suitable agent found. Please try rephrasing your question.",
+                "confidence_score": 0.0,
+                "sources": [],
+                "agent_type": "None"
+            }
+
+        except Exception as e:
+            logger.error(f"Error processing advanced query: {e}")
+            return {
+                "answer": "An error occurred while processing your advanced query.",
+                "confidence_score": 0.0,
+                "sources": [],
+                "agent_type": "Error",
+                "error": str(e)
+            }
+
     async def add_documents(self, file_paths: List[str]) -> Dict[str, Any]:
         """Process and add new documents to the vector database"""
         if not self._initialized:
@@ -353,6 +505,8 @@ class AIService:
         try:
             stats = {
                 "initialized": self._initialized,
+                "llm_status": "active" if self.llm_client else "not_configured",
+                "llm_message": "" if self.llm_client else "Add GOOGLE_API_KEY to .env for full AI features",
                 "vector_db": self.vector_db.get_statistics() if self.vector_db else {},
                 "agents": len(self.agent_registry.get_all_agents()) if self.agent_registry else 0,
                 "models": {

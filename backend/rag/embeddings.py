@@ -115,11 +115,7 @@ class EmbeddingGenerator:
             if self.model_type == "sentence-transformers":
                 return self.model.get_sentence_embedding_dimension()
             elif self.model_type == "google":
-                # Google text-embedding-004 typically returns 768 dimensions
-                if "text-embedding-004" in self.model_name:
-                    return 768
-                else:
-                    return 768  # Default assumption
+                return 768  # Google embedding models return 768 dimensions
         except Exception as e:
             logger.error(f"Error getting embedding dimension: {e}")
             return 384  # Safe fallback

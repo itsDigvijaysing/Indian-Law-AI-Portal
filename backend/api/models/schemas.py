@@ -45,6 +45,9 @@ class QueryResponse(BaseModel):
     retrieved_documents: Optional[int] = Field(None, description="Number of documents retrieved")
     retrieval_sources: Optional[List[SourceReference]] = Field(None, description="Detailed source information")
     processing_time_ms: Optional[float] = Field(None, description="Query processing time in milliseconds")
+    reformulated_queries: Optional[List[str]] = Field(None, description="Query reformulations used in RAG Fusion")
+    fusion_statistics: Optional[Dict[str, Any]] = Field(None, description="RAG Fusion process statistics")
+    applied_filters: Optional[Dict[str, Any]] = Field(None, description="Filters applied to this query")
     timestamp: datetime = Field(default_factory=datetime.now, description="Response timestamp")
     
     model_config = ConfigDict(

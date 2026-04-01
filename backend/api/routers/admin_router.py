@@ -6,8 +6,8 @@ Handles administrative endpoints for document management and system control.
 
 import os
 import time
-from typing import Any, Dict, List
-from fastapi import APIRouter, HTTPException, Request, Depends, UploadFile, File
+from typing import Any, Dict
+from fastapi import APIRouter, HTTPException, Request, Depends
 from loguru import logger
 
 from ..models.schemas import (
@@ -16,16 +16,10 @@ from ..models.schemas import (
 )
 from ..core.ai_service import AIService
 from ..core.config import get_settings
+from ..dependencies import get_ai_service
 
 
 router = APIRouter()
-
-
-def get_ai_service(request: Request) -> AIService:
-    """Dependency to get AI service from app state"""
-    if not hasattr(request.app.state, 'ai_service'):
-        raise HTTPException(status_code=503, detail="AI service not available")
-    return request.app.state.ai_service
 
 
 @router.post("/documents/process", response_model=DocumentUploadResponse)

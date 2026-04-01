@@ -9,18 +9,12 @@ from typing import Any, Dict
 from fastapi import APIRouter, HTTPException, Request, Depends
 from loguru import logger
 
-from ..models.schemas import QueryRequest, QueryResponse, AdvancedQueryRequest, ErrorResponse
+from ..models.schemas import QueryRequest, QueryResponse, AdvancedQueryRequest
 from ..core.ai_service import AIService
+from ..dependencies import get_ai_service
 
 
 router = APIRouter()
-
-
-def get_ai_service(request: Request) -> AIService:
-    """Dependency to get AI service from app state"""
-    if not hasattr(request.app.state, 'ai_service'):
-        raise HTTPException(status_code=503, detail="AI service not available")
-    return request.app.state.ai_service
 
 
 @router.post("/query", response_model=QueryResponse)
@@ -89,13 +83,19 @@ async def process_advanced_query(
     
     try:
         logger.info(f"Received advanced query: {query_request.query[:100]}...")
-        
-        # TODO: Implement advanced filtering logic
-        # For now, process as regular query
-        result = await ai_service.process_query(query_request.query)
-        
+
+        filters_dict = query_request.filters.model_dump() if query_request.filters else None
+
+        result = await ai_service.process_advanced_query(
+            query=query_request.query,
+            filters=filters_dict,
+            fusion_queries=query_request.fusion_queries,
+            explain_reasoning=query_request.explain_reasoning,
+            confidence_threshold=filters_dict.get('confidence_threshold') if filters_dict else None
+        )
+
         processing_time = (time.time() - start_time) * 1000
-        
+
         response = QueryResponse(
             answer=result.get('answer', ''),
             confidence_score=result.get('confidence_score', 0.0),
@@ -104,9 +104,12 @@ async def process_advanced_query(
             reasoning_steps=result.get('reasoning_steps'),
             retrieved_documents=result.get('retrieved_documents'),
             retrieval_sources=result.get('retrieval_sources'),
+            reformulated_queries=result.get('reformulated_queries'),
+            fusion_statistics=result.get('fusion_statistics'),
+            applied_filters=result.get('applied_filters'),
             processing_time_ms=processing_time
         )
-        
+
         logger.info(f"Advanced query processed in {processing_time:.2f}ms")
         return response
         
@@ -184,7 +187,7 @@ async def validate_query(
         
         # Domain estimation
         query_lower = query.lower()
-        if any(term in query_lower for term in ['ipc', 'criminal', 'theft', 'murder', 'punishment']):
+        if any(term in query_lower for term in ['ipc', 'criminal', 'theft', 'murder', 'punishment', 'bns', 'bnss', 'bharatiya nyaya', 'sanhita']):
             validation_result["estimated_domain"] = "Criminal Law"
         elif any(term in query_lower for term in ['cpc', 'civil', 'contract', 'property', 'suit']):
             validation_result["estimated_domain"] = "Civil Law"

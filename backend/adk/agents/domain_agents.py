@@ -8,7 +8,6 @@ Each agent has domain expertise and can provide specialized reasoning.
 from typing import List
 from ..base_agent import BaseAgent, AgentResponse
 from loguru import logger
-import google.generativeai as genai
 
 
 class CriminalLawAgent(BaseAgent):
@@ -19,10 +18,13 @@ class CriminalLawAgent(BaseAgent):
     
     def get_domain_keywords(self) -> List[str]:
         return [
-            "ipc", "indian penal code", "criminal", "crime", "theft", "murder", 
+            "ipc", "indian penal code", "criminal", "crime", "theft", "murder",
             "assault", "kidnapping", "fraud", "cheating", "crpc", "criminal procedure",
             "bail", "arrest", "investigation", "trial", "punishment", "sentence",
-            "cognizable", "non-cognizable", "bailable", "non-bailable"
+            "cognizable", "non-cognizable", "bailable", "non-bailable",
+            "bns", "bharatiya nyaya sanhita", "bharatiya nyaya",
+            "bnss", "bharatiya nagarik suraksha sanhita", "bharatiya nagarik suraksha",
+            "sanhita", "nagarik suraksha"
         ]
     
     def can_handle(self, query: str, retrieved_context: List[str]) -> bool:
@@ -33,15 +35,8 @@ class CriminalLawAgent(BaseAgent):
         return any(keyword in query_lower or keyword in context_text for keyword in keywords)
     
     def process_query(self, query: str, retrieved_context: List[str]) -> AgentResponse:
-        # Check if LLM client is available
         if self.llm_client is None:
-            return AgentResponse(
-                answer="LLM service is not configured. Please add your Google API key to the .env file to enable AI-powered responses.",
-                confidence_score=0.0,
-                sources=self._extract_sources(retrieved_context),
-                agent_type="Criminal Law",
-                reasoning_steps=["LLM client not available - API key required"]
-            )
+            return self._build_no_llm_response(retrieved_context)
         
         prompt = self._build_criminal_law_prompt(query, retrieved_context)
         
@@ -79,7 +74,10 @@ class CriminalLawAgent(BaseAgent):
         context_text = "\n\n".join([f"Legal Text {i+1}: {ctx}" for i, ctx in enumerate(context)])
         
         return f"""
-You are an expert in Indian Criminal Law, specializing in the Indian Penal Code (IPC) and Criminal Procedure Code (CrPC).
+You are an expert in Indian Criminal Law, specializing in:
+- Bharatiya Nyaya Sanhita (BNS), 2023 — replaced the Indian Penal Code (IPC) effective July 1, 2024
+- Bharatiya Nagarik Suraksha Sanhita (BNSS), 2023 — replaced the Criminal Procedure Code (CrPC) effective July 1, 2024
+- The legacy IPC (1860) and CrPC (1973) — still relevant for pre-2024 cases
 
 LEGAL CONTEXT FROM OFFICIAL SOURCES:
 {context_text}
@@ -88,15 +86,16 @@ USER QUERY: {query}
 
 Instructions for Criminal Law Analysis:
 1. Identify the specific criminal offense or procedure in question
-2. Reference exact IPC sections, CrPC sections, or relevant legal provisions
-3. Explain the elements of the offense (if applicable)
-4. Mention punishment/penalty details with section references
-5. Clarify procedural aspects (bailable/non-bailable, cognizable/non-cognizable)
-6. Use precise legal terminology while keeping explanations clear
+2. Reference exact section numbers from the applicable code (BNS/BNSS for current law, IPC/CrPC for legacy matters)
+3. When possible, mention the corresponding section in both old and new codes for reference
+4. Explain the elements of the offense (if applicable)
+5. Mention punishment/penalty details with section references
+6. Clarify procedural aspects (bailable/non-bailable, cognizable/non-cognizable)
+7. Use precise legal terminology while keeping explanations clear
 
 Format your response with:
 - Direct answer to the query
-- Relevant section numbers and their provisions
+- Relevant section numbers and their provisions (specify which code: BNS/BNSS or IPC/CrPC)
 - Practical implications
 - Any important procedural notes
 
@@ -126,16 +125,9 @@ class CivilLawAgent(BaseAgent):
         return any(keyword in query_lower or keyword in context_text for keyword in keywords)
     
     def process_query(self, query: str, retrieved_context: List[str]) -> AgentResponse:
-        # Check if LLM client is available
         if self.llm_client is None:
-            return AgentResponse(
-                answer="LLM service is not configured. Please add your Google API key to the .env file to enable AI-powered responses.",
-                confidence_score=0.0,
-                sources=self._extract_sources(retrieved_context),
-                agent_type="Civil Law",
-                reasoning_steps=["LLM client not available - API key required"]
-            )
-        
+            return self._build_no_llm_response(retrieved_context)
+
         prompt = self._build_civil_law_prompt(query, retrieved_context)
         
         try:
@@ -220,16 +212,9 @@ class ConstitutionalLawAgent(BaseAgent):
         return any(keyword in query_lower or keyword in context_text for keyword in keywords)
     
     def process_query(self, query: str, retrieved_context: List[str]) -> AgentResponse:
-        # Check if LLM client is available
         if self.llm_client is None:
-            return AgentResponse(
-                answer="LLM service is not configured. Please add your Google API key to the .env file to enable AI-powered responses.",
-                confidence_score=0.0,
-                sources=self._extract_sources(retrieved_context),
-                agent_type="Constitutional Law",
-                reasoning_steps=["LLM client not available - API key required"]
-            )
-        
+            return self._build_no_llm_response(retrieved_context)
+
         prompt = self._build_constitutional_prompt(query, retrieved_context)
         
         try:
@@ -306,15 +291,8 @@ class GeneralLegalAgent(BaseAgent):
         return True
     
     def process_query(self, query: str, retrieved_context: List[str]) -> AgentResponse:
-        # Check if LLM client is available
         if self.llm_client is None:
-            return AgentResponse(
-                answer="LLM service is not configured. Please add your Google API key to the .env file to enable AI-powered responses.",
-                confidence_score=0.0,
-                sources=self._extract_sources(retrieved_context),
-                agent_type="General Legal",
-                reasoning_steps=["LLM client not available - API key required"]
-            )
+            return self._build_no_llm_response(retrieved_context)
         
         prompt = self._build_general_prompt(query, retrieved_context)
         

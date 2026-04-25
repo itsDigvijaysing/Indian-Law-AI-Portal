@@ -174,9 +174,11 @@ Indian-Law-AI-Portal/
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Python 3.10+ (tested with 3.13)
+- Python 3.10+ (tested with 3.13; 3.14 may lack wheels for `faiss-cpu`)
 - Node.js 16+
-- Google AI API Key ([Get one here](https://makersuite.google.com/app/apikey))
+- One of:
+  - **Groq API Key** ([free key here](https://console.groq.com/keys)) — recommended; generous free tier
+  - **Google AI API Key** ([key here](https://makersuite.google.com/app/apikey)) — Gemini; free tier is tightly rate-limited
 
 ### 1️⃣ Clone & Setup
 
@@ -197,12 +199,22 @@ nano .env  # or use any editor
 ```
 
 ```env
-# Required
-GOOGLE_API_KEY=your_actual_api_key_here
+# Pick one provider
+LLM_PROVIDER=groq                      # "groq" or "gemini"
 
-# Optional (defaults shown)
-LLM_MODEL=gemini-1.5-pro
-EMBEDDING_MODEL=text-embedding-004
+# Groq (recommended)
+GROQ_API_KEY=your_groq_api_key_here
+GROQ_MODEL=llama-3.3-70b-versatile
+
+# Google Gemini (alternative)
+GOOGLE_API_KEY=your_google_api_key_here
+LLM_MODEL=gemini-2.5-flash
+
+# Embeddings — local (no API quota) is the default; switch to a Google
+# embedding model only if you have a paid tier (free tier is rate-limited).
+EMBEDDING_MODEL=all-MiniLM-L6-v2       # local, 384-dim, fast
+# EMBEDDING_MODEL=gemini-embedding-001 # Google, 768-dim
+
 API_PORT=8000
 ```
 
@@ -215,15 +227,19 @@ API_PORT=8000
 
 **Option B: Manual start**
 ```bash
-# Terminal 1 - Backend
-cd backend
-python main.py
+# Terminal 1 - Backend (run from project root, NOT from inside backend/)
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python backend/main.py
 
 # Terminal 2 - Frontend
 cd frontend
 npm install
 npm start
 ```
+
+> The backend resolves `assets/` and `vector_db/` against the project root. Always launch it from the project root (or via `start_dev.sh`).
 
 ### 4️⃣ Access the Application
 
@@ -310,20 +326,61 @@ sequenceDiagram
     API-->>U: JSON response
 ```
 
-**Response:**
+**Real response** (Groq Llama 3.3 70B, full retrieval over the 6 official PDFs):
 ```json
 {
-  "answer": "According to Section 379 of the Indian Penal Code, theft is punishable with imprisonment which may extend to three years, or with fine, or with both.",
-  "confidence_score": 0.92,
   "agent_type": "Criminal Law",
-  "sources": ["Section 379 - IPC", "Section 378 - IPC"],
-  "reasoning_steps": [
-    "Identified criminal law query about theft",
-    "Retrieved relevant IPC sections",
-    "Applied criminal law reasoning",
-    "Formatted response with legal references"
+  "confidence_score": 1.0,
+  "retrieved_documents": 10,
+  "answer": "**Direct Answer:** The punishment for theft under the Indian Penal Code (IPC) and its corresponding provisions in the Bharatiya Nyaya Sanhita (BNS) can vary depending on the circumstances of the case. Under the IPC, Section 380 specifically deals with 'Theft in dwelling house, etc.' and prescribes a punishment of imprisonment for a term which may extend to seven years, and also liable to fine. Section 381 of the IPC pertains to 'Theft by clerk or servant of property in possession of master' with a similar punishment...",
+  "retrieval_sources": [
+    {"document": "Indian_Penal_Code_1860",         "section": "Section-88",  "similarity_score": 0.539},
+    {"document": "Code_of_Criminal_Procedure_1973", "section": "Section-624", "similarity_score": 0.518},
+    {"document": "Code_of_Criminal_Procedure_1973", "section": "Section-626", "similarity_score": 0.530}
   ]
 }
+```
+
+---
+
+## 🧪 Sample queries to try
+
+Once the backend is running with documents ingested (it auto-ingests the PDFs in `assets/` on first start), try these:
+
+| Domain | Query | Routes to |
+|---|---|---|
+| Criminal | `What is the punishment for theft under IPC?` | Criminal Law Agent |
+| Criminal (BNS) | `What does the Bharatiya Nyaya Sanhita say about murder?` | Criminal Law Agent |
+| Civil | `What is the limitation period for filing a civil suit?` | Civil Law Agent |
+| Constitutional | `Explain the right to life under Article 21 of the Indian Constitution` | Constitutional Law Agent |
+| Procedural | `What does the law say about plea bargaining?` | Criminal Law Agent (CrPC) |
+
+```bash
+curl -s http://localhost:8000/api/v1/query \
+     -H 'Content-Type: application/json' \
+     -d '{"query":"Explain the right to life under Article 21 of the Indian Constitution"}' | jq
+```
+
+A real response (Groq Llama 3.3 70B, retrieved from `Constitution_of_India.pdf`):
+
+```json
+{
+  "agent_type": "Constitutional Law",
+  "confidence_score": 1.0,
+  "retrieved_documents": 10,
+  "answer": "**Direct Constitutional Answer**: The right to life under Article 21 of the Indian Constitution is a fundamental right that guarantees every person the right to life and personal liberty. Article 21 states: 'No person shall be deprived of his life or personal liberty except according to procedure established by law.' This article is a cornerstone of the Indian Constitution, ensuring that the state does not arbitrarily deprive individuals of their life or liberty...",
+  "retrieval_sources": [
+    {"document": "Constitution_of_India", "section": "Section-4", "similarity_score": 0.518},
+    {"document": "Constitution_of_India", "section": "Section-1", "similarity_score": 0.525},
+    {"document": "Constitution_of_India", "section": "Section-1", "similarity_score": 0.516}
+  ]
+}
+```
+
+The repo also ships [test_runner.sh](test_runner.sh), a small bash script that exercises every endpoint (health, stats, validate, query, advanced query, edge cases) against a running backend:
+
+```bash
+./test_runner.sh
 ```
 
 ---
@@ -334,8 +391,8 @@ sequenceDiagram
 |-----------|------------|
 | **Backend Framework** | FastAPI |
 | **Frontend** | React 18 |
-| **LLM** | Google Gemini |
-| **Embeddings** | Google text-embedding-004 / Sentence Transformers |
+| **LLM** | Groq (Llama 3.3 70B) or Google Gemini — switchable via `LLM_PROVIDER` |
+| **Embeddings** | Sentence Transformers (`all-MiniLM-L6-v2`, local) or Google `gemini-embedding-001` |
 | **Vector Database** | FAISS |
 | **RAG Technique** | RAG Fusion (n=3) |
 
@@ -345,9 +402,12 @@ sequenceDiagram
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `GOOGLE_API_KEY` | - | **Required** for LLM features |
-| `LLM_MODEL` | gemini-2.0-flash | Language model |
-| `EMBEDDING_MODEL` | gemini-embedding-001 | Embedding model |
+| `LLM_PROVIDER` | gemini | `groq` or `gemini` |
+| `GROQ_API_KEY` | – | Required when `LLM_PROVIDER=groq` |
+| `GROQ_MODEL` | llama-3.3-70b-versatile | Groq Llama model ID |
+| `GOOGLE_API_KEY` | – | Required when `LLM_PROVIDER=gemini` |
+| `LLM_MODEL` | gemini-2.0-flash | Gemini model name |
+| `EMBEDDING_MODEL` | gemini-embedding-001 | Use `all-MiniLM-L6-v2` for local embeddings |
 | `RAG_FUSION_QUERIES` | 3 | Number of query reformulations |
 | `TOP_K_RETRIEVAL` | 10 | Documents to retrieve |
 | `CHUNK_SIZE` | 500 | Words per chunk |

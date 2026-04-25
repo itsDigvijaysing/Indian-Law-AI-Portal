@@ -16,6 +16,30 @@ from typing import Dict, List, Any, Optional
 import google.generativeai as genai
 from loguru import logger
 
+
+class _GroqResponse:
+    """Mimics google.generativeai response shape (.text)."""
+    def __init__(self, text: str):
+        self.text = text
+
+
+class GroqLLMClient:
+    """Adapter giving Groq's chat-completions API the same .generate_content(prompt).text shape the agents expect."""
+
+    def __init__(self, api_key: str, model: str):
+        from groq import Groq
+        self._client = Groq(api_key=api_key)
+        self._model = model
+
+    def generate_content(self, prompt: str) -> _GroqResponse:
+        completion = self._client.chat.completions.create(
+            messages=[{"role": "user", "content": prompt}],
+            model=self._model,
+            temperature=0.3,
+            max_tokens=2048,
+        )
+        return _GroqResponse(completion.choices[0].message.content or "")
+
 # Handle imports for both module and direct execution
 try:
     from .config import get_settings
@@ -80,10 +104,11 @@ class AIService:
             # 7. Load existing data if available
             await self._load_existing_data()
 
+            # Mark initialized before auto-ingest so add_documents() can run.
+            self._initialized = True
+
             # 8. Auto-ingest new documents from assets
             await self._auto_ingest_documents()
-
-            self._initialized = True
             
             if self.llm_client:
                 logger.info("AI Service initialization completed successfully (full mode)")
@@ -96,23 +121,31 @@ class AIService:
             raise
     
     async def _initialize_llm_client(self):
-        """Initialize Google Generative AI client"""
+        """Initialize the LLM client (Groq or Gemini, per LLM_PROVIDER)."""
+        provider = (self.settings.LLM_PROVIDER or "gemini").lower()
         try:
-            # Check if API key is valid
+            if provider == "groq":
+                if not self.settings.GROQ_API_KEY:
+                    logger.warning("LLM_PROVIDER=groq but GROQ_API_KEY is empty. LLM features will be limited.")
+                    self.llm_client = None
+                    return
+                self.llm_client = GroqLLMClient(self.settings.GROQ_API_KEY, self.settings.GROQ_MODEL)
+                logger.info(f"LLM client initialized: groq/{self.settings.GROQ_MODEL}")
+                return
+
+            # Default: Gemini
             if not self.settings.GOOGLE_API_KEY or self.settings.GOOGLE_API_KEY == "your_google_api_key_here":
                 logger.warning("Google API key not configured. LLM features will be limited.")
                 logger.warning("Please set GOOGLE_API_KEY in your .env file")
                 self.llm_client = None
                 return
-            
+
             genai.configure(api_key=self.settings.GOOGLE_API_KEY)
             self.llm_client = genai.GenerativeModel(self.settings.LLM_MODEL)
-            
-            # Skip test call to save quota - just verify model is created
-            logger.info(f"LLM client initialized: {self.settings.LLM_MODEL}")
-            
+            logger.info(f"LLM client initialized: gemini/{self.settings.LLM_MODEL}")
+
         except Exception as e:
-            logger.warning(f"Could not initialize LLM client: {e}")
+            logger.warning(f"Could not initialize LLM client ({provider}): {e}")
             logger.warning("The API will start but LLM features will be limited.")
             self.llm_client = None
     

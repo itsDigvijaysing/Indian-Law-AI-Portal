@@ -12,24 +12,34 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
 
 
+_PROJECT_ROOT = Path(__file__).resolve().parents[3]
+
+
 def _find_env_file() -> str:
     """Find .env file - check current dir, then parent (project root)"""
     current = Path.cwd() / ".env"
     if current.exists():
         return str(current)
-    
+
     # Check parent directory (when running from backend/)
     parent = Path.cwd().parent / ".env"
     if parent.exists():
         return str(parent)
-    
+
     # Check relative to this file's location
-    config_dir = Path(__file__).parent
-    project_root = config_dir.parent.parent.parent / ".env"
-    if project_root.exists():
-        return str(project_root)
-    
+    project_root_env = _PROJECT_ROOT / ".env"
+    if project_root_env.exists():
+        return str(project_root_env)
+
     return ".env"  # Default fallback
+
+
+def _resolve_project_path(value: str) -> str:
+    """Resolve relative paths against the project root, leaving absolute paths alone."""
+    p = Path(value)
+    if p.is_absolute():
+        return str(p)
+    return str((_PROJECT_ROOT / p).resolve())
 
 
 class Settings(BaseSettings):
@@ -44,8 +54,13 @@ class Settings(BaseSettings):
     # Google AI Configuration
     GOOGLE_API_KEY: str = Field(default="your_google_api_key_here")
     GOOGLE_PROJECT_ID: Optional[str] = Field(default=None)
-    
+
+    # Groq Configuration
+    GROQ_API_KEY: str = Field(default="")
+    GROQ_MODEL: str = Field(default="llama-3.3-70b-versatile")
+
     # Model Configuration
+    LLM_PROVIDER: str = Field(default="gemini")  # "gemini" or "groq"
     LLM_MODEL: str = Field(default="gemini-2.0-flash")
     EMBEDDING_MODEL: str = Field(default="gemini-embedding-001")
     
@@ -76,7 +91,11 @@ class Settings(BaseSettings):
 @lru_cache()
 def get_settings() -> Settings:
     """Get cached settings instance"""
-    return Settings()
+    settings = Settings()
+    settings.VECTOR_DB_PATH = _resolve_project_path(settings.VECTOR_DB_PATH)
+    settings.ASSETS_PATH = _resolve_project_path(settings.ASSETS_PATH)
+    settings.LOG_FILE = _resolve_project_path(settings.LOG_FILE)
+    return settings
 
 
 def setup_logging(settings: Settings):

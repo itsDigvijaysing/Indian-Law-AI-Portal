@@ -56,3 +56,6 @@ frontend/dist/
 # OS
 .DS_Store
 Thumbs.db
+
+# Claude Code knowledge base (local-only)
+CLAUDE.md

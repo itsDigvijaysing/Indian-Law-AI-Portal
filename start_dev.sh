@@ -24,25 +24,33 @@ mkdir -p logs vector_db assets
 # Function to start backend
 start_backend() {
     echo "🐍 Starting Python Backend..."
-    cd "$SCRIPT_DIR/backend"
-    
-    # Check if conda environment is active
-    if [ -n "$CONDA_DEFAULT_ENV" ]; then
-        echo "Using conda environment: $CONDA_DEFAULT_ENV"
-        pip install -q -r ../requirements.txt 2>/dev/null
-    else
-        # Fall back to venv if conda not active
-        if [ ! -d "venv" ]; then
-            echo "Creating Python virtual environment..."
-            python3 -m venv venv
+
+    # Activate the conda env "my_env" (created with python=3.11 from conda-forge).
+    # If conda isn't initialised in this shell, source it; if my_env doesn't exist
+    # yet, fall back to whatever python is on PATH and warn.
+    if command -v conda >/dev/null 2>&1; then
+        # shellcheck disable=SC1091
+        source "$(conda info --base)/etc/profile.d/conda.sh"
+        if conda env list | grep -qE '^\s*my_env\s'; then
+            conda activate my_env
+            echo "Using conda environment: my_env ($(python --version))"
+        else
+            echo "⚠️  conda env 'my_env' not found. Create it with:"
+            echo "    conda create -n my_env -c conda-forge python=3.11 -y"
+            echo "    conda activate my_env"
+            echo "    pip install -r requirements.txt groq"
         fi
-        source venv/bin/activate
-        pip install -q -r ../requirements.txt 2>/dev/null
+    else
+        echo "⚠️  conda not found on PATH; using system python: $(python3 --version 2>&1)"
     fi
-    
-    python main.py &
-    BACKEND_PID=$!
+
+    pip install -q -r "$SCRIPT_DIR/requirements.txt" 2>/dev/null
+
+    # IMPORTANT: launch from project root so relative paths
+    # (assets/, vector_db/) resolve correctly.
     cd "$SCRIPT_DIR"
+    python backend/main.py &
+    BACKEND_PID=$!
     echo "✅ Backend started with PID: $BACKEND_PID"
     echo "📡 API available at: http://localhost:8000"
     echo "📚 API docs at: http://localhost:8000/docs"

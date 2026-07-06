@@ -1,115 +1,166 @@
-import React from 'react';
+import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import './ResponseDisplay.css';
 
-function ResponseDisplay({ response }) {
-  if (!response) return null;
+// Turn validated [n] markers into markdown links the CitationAnchor renders as chips.
+// Only 1-2 digit numbers: bracketed years in legal text ("[1963]") are literals.
+function linkifyCitations(answer) {
+  return (answer || '').replace(/\[(\d{1,2})\](?!\()/g, '[$1](#cite-$1)');
+}
 
+function CitationAnchor({ href, children, node, ...props }) {
+  if (href && href.startsWith('#cite-')) {
+    const n = href.slice('#cite-'.length);
+    const onClick = (e) => {
+      e.preventDefault();
+      const card = document.getElementById(`source-card-${n}`);
+      if (card) {
+        card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        card.classList.remove('flash');
+        void card.offsetWidth;
+        card.classList.add('flash');
+      }
+    };
+    return (
+      <sup className="citation-chip" onClick={onClick} role="link" tabIndex={0}
+           onKeyDown={(e) => e.key === 'Enter' && onClick(e)}>
+        {n}
+      </sup>
+    );
+  }
+  return <a href={href} target="_blank" rel="noreferrer" {...props}>{children}</a>;
+}
+
+function EraTag({ era }) {
+  if (era === 'pre-2024') return <span className="tag legacy">legacy</span>;
+  if (era === 'post-2024') return <span className="tag current">current</span>;
+  return null;
+}
+
+function SourceCard({ source, streaming }) {
+  const pages = source.page_start
+    ? (source.page_start === source.page_end ? `p. ${source.page_start}` : `pp. ${source.page_start}-${source.page_end}`)
+    : null;
+  const stateClass = source.cited ? 'cited' : (streaming ? '' : 'uncited');
   return (
-    <div className="response-display">
-      <h3>Legal Answer</h3>
-
-      <div className="response-content">
-        <ReactMarkdown>{response.answer}</ReactMarkdown>
+    <div id={source.id != null ? `source-card-${source.id}` : undefined}
+         className={`source-card ${stateClass}`}>
+      <div className="source-top">
+        {source.id != null && <span className="source-num">{source.id}</span>}
+        <span className="source-title">{source.document_title || formatDocName(source.document)}</span>
+        <EraTag era={source.era} />
       </div>
-
-      <div className="response-meta">
-        <span className="meta-item">
-          <strong>Agent:</strong> {response.agent_type}
-        </span>
-        <span className={`meta-item confidence ${getConfidenceClass(response.confidence_score)}`}>
-          <strong>Confidence:</strong> {(response.confidence_score * 100).toFixed(1)}%
-        </span>
-        {response.processing_time_ms && (
-          <span className="meta-item">
-            <strong>Time:</strong> {response.processing_time_ms.toFixed(0)}ms
-          </span>
-        )}
-        {response.retrieved_documents != null && (
-          <span className="meta-item">
-            <strong>Docs Searched:</strong> {response.retrieved_documents}
-          </span>
-        )}
+      <div className="source-ref">
+        <span className="source-section">{source.section}</span>
+        {pages && <span className="source-pages"> · {pages}</span>}
       </div>
-
-      {response.retrieval_sources && response.retrieval_sources.length > 0 && (
-        <div className="sources-panel">
-          <h4>Retrieval Sources</h4>
-          {response.retrieval_sources.map((source, index) => (
-            <div key={index} className="source-item">
-              <div className="source-header">
-                <span className="source-doc-badge">{formatDocName(source.document)}</span>
-                <span className="source-section">{source.section}</span>
-              </div>
-              <div className="source-scores">
-                <div className="score-bar">
-                  <span className="score-label">Similarity</span>
-                  <div className="score-track">
-                    <div className="score-fill" style={{ width: `${(source.similarity_score || 0) * 100}%` }} />
-                  </div>
-                  <span className="score-value">{((source.similarity_score || 0) * 100).toFixed(0)}%</span>
-                </div>
-                {source.fusion_score != null && source.fusion_score > 0 && (
-                  <div className="score-bar">
-                    <span className="score-label">Fusion</span>
-                    <div className="score-track fusion">
-                      <div className="score-fill fusion" style={{ width: `${Math.min((source.fusion_score || 0) * 200, 100)}%` }} />
-                    </div>
-                    <span className="score-value">{source.fusion_score.toFixed(3)}</span>
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {response.sources && response.sources.length > 0 && (
-        <div className="legal-refs">
-          <h4>Legal References</h4>
-          <ul>
-            {response.sources.map((source, index) => (
-              <li key={index}>{source}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {response.reasoning_steps && response.reasoning_steps.length > 0 && (
-        <div className="reasoning">
-          <h4>AI Reasoning Process</h4>
-          <ol>
-            {response.reasoning_steps.map((step, index) => (
-              <li key={index}>{step}</li>
-            ))}
-          </ol>
-        </div>
-      )}
-
-      {response.reformulated_queries && (
-        <div className="fusion-details">
-          <h4>RAG Fusion - Query Reformulations</h4>
-          <ul>
-            {response.reformulated_queries.map((q, index) => (
-              <li key={index}>{q}</li>
-            ))}
-          </ul>
-          {response.fusion_statistics && (
-            <div className="fusion-stats">
-              <span>Unique results: {response.fusion_statistics.total_unique_results}</span>
-              <span>Avg coverage: {response.fusion_statistics.average_query_coverage?.toFixed(1)}</span>
-            </div>
-          )}
-        </div>
-      )}
+      {source.snippet && <p className="source-snippet">{source.snippet}…</p>}
     </div>
   );
 }
 
-function getConfidenceClass(score) {
+function confidenceLabel(score) {
+  if (score >= 0.7) return 'High';
+  if (score >= 0.4) return 'Medium';
+  return 'Low';
+}
+function confidenceClass(score) {
   if (score >= 0.7) return 'high';
   if (score >= 0.4) return 'medium';
   return 'low';
+}
+
+function ResponseDisplay({ response }) {
+  const [showDetails, setShowDetails] = useState(false);
+  if (!response) return null;
+
+  const sources = response.retrieval_sources || [];
+  const cited = response.streaming ? sources : sources.filter((s) => s.cited);
+  const uncited = response.streaming ? [] : sources.filter((s) => !s.cited);
+  const isAssistant = response.agent_type === 'Assistant';
+  const hasSources = sources.length > 0;
+
+  return (
+    <article className={`answer ${hasSources ? 'answer-grid' : ''}`}>
+      <div className="answer-main">
+        {/* Quiet meta line above the answer */}
+        <div className="answer-meta">
+          {response.detected_category && (
+            <span className="meta-chip">{response.detected_category}</span>
+          )}
+          {response.streaming ? (
+            <span className="meta-muted"><span className="live-dot" /> Answering…</span>
+          ) : !isAssistant && (
+            <span className={`meta-conf ${confidenceClass(response.confidence_score || 0)}`}>
+              {confidenceLabel(response.confidence_score || 0)} confidence
+              <span className="conf-pct">{((response.confidence_score || 0) * 100).toFixed(0)}%</span>
+            </span>
+          )}
+          {response.retrieved_documents != null && !isAssistant && (
+            <span className="meta-muted">{response.retrieved_documents} passages</span>
+          )}
+          {response.processing_time_ms != null && (
+            <span className="meta-muted">{(response.processing_time_ms / 1000).toFixed(1)}s</span>
+          )}
+        </div>
+
+        <div className="answer-body">
+          <ReactMarkdown components={{ a: CitationAnchor }}>
+            {linkifyCitations(response.answer)}
+          </ReactMarkdown>
+          {response.streaming && <span className="caret" />}
+        </div>
+
+        {(response.reasoning_steps?.length > 0 || response.reformulated_queries?.length > 0) && (
+          <div className="details-block">
+            <button className="details-toggle" onClick={() => setShowDetails((v) => !v)}>
+              {showDetails ? 'Hide' : 'Show'} retrieval details
+            </button>
+            {showDetails && (
+              <div className="details-content">
+                {response.reasoning_steps?.length > 0 && (
+                  <div>
+                    <h4>Reasoning</h4>
+                    <ol>{response.reasoning_steps.map((s, i) => <li key={i}>{s}</li>)}</ol>
+                  </div>
+                )}
+                {response.reformulated_queries?.length > 0 && (
+                  <div>
+                    <h4>Query reformulations</h4>
+                    <ul>{response.reformulated_queries.map((q, i) => <li key={i}>{q}</li>)}</ul>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {hasSources && (
+        <aside className="answer-side">
+          <h3 className="sources-title">
+            Sources <span className="sources-count">{cited.length || sources.length}</span>
+          </h3>
+          <div className="sources-list">
+            {(cited.length > 0 ? cited : []).map((s) => (
+              <SourceCard key={s.id ?? s.section} source={s} streaming={response.streaming} />
+            ))}
+          </div>
+          {cited.length === 0 && !response.streaming && (
+            <p className="sources-none">No specific sources cited.</p>
+          )}
+          {uncited.length > 0 && (
+            <details className="also">
+              <summary>Also retrieved ({uncited.length})</summary>
+              <div className="sources-list">
+                {uncited.map((s, i) => <SourceCard key={s.id ?? `u${i}`} source={s} />)}
+              </div>
+            </details>
+          )}
+        </aside>
+      )}
+    </article>
+  );
 }
 
 function formatDocName(name) {

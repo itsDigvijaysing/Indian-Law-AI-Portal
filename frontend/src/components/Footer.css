@@ -1,18 +1,10 @@
 .footer {
   text-align: center;
-  padding: 1.5rem 0;
-  color: var(--text-secondary);
-  border-top: 1px solid #e9ecef;
-  margin-top: 2rem;
+  padding: 24px 24px 40px;
+  color: var(--text-3);
 }
-
 .footer p {
   margin: 0;
-  font-size: 0.9rem;
-}
-
-.footer .disclaimer {
   font-size: 0.8rem;
-  margin-top: 0.4rem;
-  opacity: 0.8;
+  line-height: 1.5;
 }

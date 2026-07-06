@@ -4,9 +4,11 @@ Query Router
 Handles legal query processing endpoints.
 """
 
+import json
 import time
 from typing import Any, Dict
 from fastapi import APIRouter, HTTPException, Request, Depends
+from fastapi.responses import StreamingResponse
 from loguru import logger
 
 from ..models.schemas import QueryRequest, QueryResponse, AdvancedQueryRequest
@@ -51,9 +53,10 @@ async def process_legal_query(
             reasoning_steps=result.get('reasoning_steps'),
             retrieved_documents=result.get('retrieved_documents'),
             retrieval_sources=result.get('retrieval_sources'),
+            detected_category=result.get('detected_category'),
             processing_time_ms=processing_time
         )
-        
+
         logger.info(f"Query processed successfully in {processing_time:.2f}ms")
         return response
         
@@ -63,6 +66,41 @@ async def process_legal_query(
             status_code=500,
             detail=f"Error processing legal query: {str(e)}"
         )
+
+
+@router.post("/query/stream")
+async def stream_legal_query(
+    query_request: QueryRequest,
+    ai_service: AIService = Depends(get_ai_service)
+) -> StreamingResponse:
+    """
+    Stream a legal query answer over Server-Sent Events.
+
+    Event order:
+    1. `sources` — the numbered citation table (sent first so the UI can
+       live-link [n] chips as tokens arrive)
+    2. `token`  — answer text deltas
+    3. `done`   — finalized answer, validated citations, confidence
+    """
+    start_time = time.time()
+
+    async def event_stream():
+        try:
+            async for event, data in ai_service.stream_query(query_request.query):
+                if event == 'done':
+                    data['processing_time_ms'] = (time.time() - start_time) * 1000
+                yield f"event: {event}\ndata: {json.dumps(data, default=str)}\n\n"
+        except Exception as e:
+            logger.error(f"Error streaming query: {e}")
+            yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        # no-transform stops proxies (incl. the CRA dev proxy) from gzip-buffering
+        # the stream, which would hold all tokens until the response completes
+        headers={"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.post("/query/advanced", response_model=QueryResponse)
@@ -104,6 +142,7 @@ async def process_advanced_query(
             reasoning_steps=result.get('reasoning_steps'),
             retrieved_documents=result.get('retrieved_documents'),
             retrieval_sources=result.get('retrieval_sources'),
+            detected_category=result.get('detected_category'),
             reformulated_queries=result.get('reformulated_queries'),
             fusion_statistics=result.get('fusion_statistics'),
             applied_filters=result.get('applied_filters'),

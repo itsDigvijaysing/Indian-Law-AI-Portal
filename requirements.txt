@@ -8,10 +8,14 @@ python-dotenv>=1.0.0
 # Google AI SDK
 google-generativeai>=0.3.2
 
+# Groq SDK (used when LLM_PROVIDER=groq)
+groq>=1.0
+
 # Vector Database & Embeddings
 faiss-cpu>=1.7.4
 sentence-transformers>=2.2.2
 numpy>=1.24.3
+rank_bm25>=0.2.2
 
 # Document Processing
 PyPDF2>=3.0.1

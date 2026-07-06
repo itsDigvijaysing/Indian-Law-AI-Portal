@@ -11,10 +11,11 @@ function DocumentManager() {
 
   const loadDocuments = useCallback(async () => {
     try {
-      const res = await axios.get(`${API_BASE_URL}/api/v1/admin/documents`);
+      const res = await axios.get(`${API_BASE_URL}/api/v1/admin/documents/list`);
       setDocuments(res.data.documents || []);
     } catch (err) {
       console.error('Failed to load documents:', err);
+      setMessage({ type: 'error', text: 'Failed to load document list' });
     }
   }, []);
 
@@ -26,54 +27,64 @@ function DocumentManager() {
     setProcessing(true);
     setMessage(null);
     try {
-      const res = await axios.post(`${API_BASE_URL}/api/v1/admin/process-documents`);
-      setMessage({ type: 'success', text: `Processed ${res.data.documents_processed || 0} documents` });
+      const res = await axios.post(`${API_BASE_URL}/api/v1/admin/documents/process`, {
+        file_paths: documents.map((doc) => doc.filename),
+      });
+      const processed = res.data.processed?.length || 0;
+      const skipped = res.data.skipped?.length || 0;
+      const failed = res.data.failed?.length || 0;
+      setMessage({
+        type: failed > 0 ? 'error' : 'success',
+        text: `Processed ${processed}, skipped ${skipped} already ingested` +
+          (failed ? `, ${failed} FAILED` : '') +
+          (res.data.total_chunks ? `, ${res.data.total_chunks} new chunks` : ''),
+      });
       await loadDocuments();
     } catch (err) {
-      setMessage({ type: 'error', text: err.response?.data?.detail || 'Processing failed' });
+      const detail = err.response?.data?.detail ?? err.response?.data?.error;
+      setMessage({ type: 'error', text: (typeof detail === 'string' && detail) || 'Processing failed' });
     } finally {
       setProcessing(false);
     }
   };
 
   return (
-    <div className="document-manager">
-      <div className="dm-header">
-        <h4>Documents</h4>
+    <div className="rail-section">
+      <details className="dm">
+        <summary className="dm-summary">
+          <span className="rail-title dm-title">Corpus</span>
+          <span className="dm-count">{documents.length}</span>
+        </summary>
+
+        {message && <div className={`dm-message ${message.type}`}>{message.text}</div>}
+
+        {documents.length > 0 ? (
+          <ul className="dm-list">
+            {documents.map((doc, index) => (
+              <li key={index} className="dm-item" title={formatName(doc.filename)}>
+                <span className="dm-dot" />
+                <span className="dm-name">{formatName(doc.filename)}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="dm-empty">No documents found</p>
+        )}
+
         <button
-          className="dm-process-btn"
+          className="dm-ingest"
           onClick={handleProcessAll}
-          disabled={processing}
+          disabled={processing || documents.length === 0}
         >
-          {processing ? 'Processing...' : 'Re-process All'}
+          {processing ? 'Processing…' : 'Ingest new documents'}
         </button>
-      </div>
-
-      {message && (
-        <div className={`dm-message ${message.type}`}>{message.text}</div>
-      )}
-
-      {documents.length > 0 ? (
-        <ul className="dm-list">
-          {documents.map((doc, index) => (
-            <li key={index} className="dm-item">
-              <span className="dm-icon">PDF</span>
-              <span className="dm-name">{formatName(doc.name || doc)}</span>
-              {doc.chunks != null && (
-                <span className="dm-chunks">{doc.chunks} chunks</span>
-              )}
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="dm-empty">No documents ingested yet</p>
-      )}
+      </details>
     </div>
   );
 }
 
 function formatName(name) {
-  return name.replace(/_/g, ' ').replace(/\.pdf$/i, '');
+  return (name || '').replace(/_/g, ' ').replace(/\.pdf$/i, '');
 }
 
 export default DocumentManager;

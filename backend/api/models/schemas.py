@@ -28,11 +28,27 @@ class QueryRequest(BaseModel):
 
 
 class SourceReference(BaseModel):
-    """Model for source references in responses"""
+    """Model for source references in responses.
+
+    The `id` matches the [n] citation markers in the answer — this list IS the
+    citation table. `type` is "pdf" for local documents; a future web-search
+    source would set type="web" and carry a url instead of page numbers.
+    """
+    id: Optional[int] = Field(None, description="Citation number used in the answer ([n])")
     document: str = Field(..., description="Source document name")
-    section: str = Field(..., description="Section or chapter in document")
+    document_title: str = Field("", description="Display title, e.g. 'Indian Penal Code, 1860'")
+    section: str = Field(..., description="Real legal label, e.g. 'Section 302' or 'Order VII Rule 1'")
+    category: str = Field("", description="Legal category, e.g. 'Criminal', 'Family', 'Commercial'")
+    era: str = Field("", description="Validity era: 'pre-2024', 'post-2024', or 'current'")
     similarity_score: float = Field(..., ge=0, le=1, description="Similarity score")
     fusion_score: Optional[float] = Field(None, description="RAG Fusion score")
+    rerank_score: Optional[float] = Field(None, description="Cross-encoder rerank score")
+    snippet: str = Field("", description="Leading text of the source passage")
+    page_start: Optional[int] = Field(None, description="First PDF page of the passage (1-based)")
+    page_end: Optional[int] = Field(None, description="Last PDF page of the passage (1-based)")
+    legal_sections: List[str] = Field(default=[], description="Legal references found in the passage")
+    type: str = Field("pdf", description="Source type: 'pdf' (local document) or 'web' (future)")
+    cited: bool = Field(False, description="Whether the answer actually cites this source")
 
 
 class QueryResponse(BaseModel):
@@ -45,6 +61,7 @@ class QueryResponse(BaseModel):
     retrieved_documents: Optional[int] = Field(None, description="Number of documents retrieved")
     retrieval_sources: Optional[List[SourceReference]] = Field(None, description="Detailed source information")
     processing_time_ms: Optional[float] = Field(None, description="Query processing time in milliseconds")
+    detected_category: Optional[str] = Field(None, description="Legal category the router classified the query into")
     reformulated_queries: Optional[List[str]] = Field(None, description="Query reformulations used in RAG Fusion")
     fusion_statistics: Optional[Dict[str, Any]] = Field(None, description="RAG Fusion process statistics")
     applied_filters: Optional[Dict[str, Any]] = Field(None, description="Filters applied to this query")
@@ -99,6 +116,7 @@ class DocumentUploadResponse(BaseModel):
     success: bool = Field(..., description="Whether the operation was successful")
     processed: List[DocumentProcessingResult] = Field(default=[], description="Successfully processed files")
     failed: List[DocumentProcessingResult] = Field(default=[], description="Failed to process files")
+    skipped: List[DocumentProcessingResult] = Field(default=[], description="Files skipped because they are already ingested")
     total_chunks: int = Field(0, description="Total number of chunks added to database")
     processing_time_ms: float = Field(..., description="Total processing time")
     timestamp: datetime = Field(default_factory=datetime.now, description="Processing timestamp")
@@ -110,6 +128,7 @@ class SystemHealth(BaseModel):
     status: str = Field(..., description="Overall system status")
     ai_service_initialized: bool = Field(..., description="Whether AI service is initialized")
     vector_database_status: str = Field(..., description="Vector database status")
+    llm_status: str = Field("unknown", description="LLM client status: active or not_configured")
     total_documents: int = Field(0, description="Total documents in database")
     available_agents: int = Field(0, description="Number of available agents")
     timestamp: datetime = Field(default_factory=datetime.now, description="Health check timestamp")
@@ -118,11 +137,12 @@ class SystemHealth(BaseModel):
 class SystemStatistics(BaseModel):
     """Detailed system statistics model"""
     initialized: bool = Field(..., description="System initialization status")
+    llm_status: str = Field("unknown", description="LLM client status: active or not_configured")
+    llm_message: str = Field("", description="Hint when the LLM is not configured")
     vector_db: Dict[str, Any] = Field(default={}, description="Vector database statistics")
     agents: int = Field(0, description="Number of registered agents")
     models: Dict[str, str] = Field(default={}, description="AI models in use")
     configuration: Dict[str, Any] = Field(default={}, description="System configuration")
-    uptime: Optional[str] = Field(None, description="System uptime")
 
 
 # Error Models

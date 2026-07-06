@@ -84,13 +84,15 @@ app.add_middleware(
 )
 
 
-# Exception handlers
+# Exception handlers — carry BOTH "error" and "detail": the frontend (and
+# FastAPI convention) read `detail`, while `error` predates that and may have
+# other consumers. 422 validation errors keep FastAPI's default shape.
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request, exc):
     logger.error(f"HTTP Exception: {exc.status_code} - {exc.detail}")
     return JSONResponse(
         status_code=exc.status_code,
-        content={"error": exc.detail, "status_code": exc.status_code}
+        content={"error": exc.detail, "detail": exc.detail, "status_code": exc.status_code}
     )
 
 
@@ -99,7 +101,7 @@ async def general_exception_handler(request, exc):
     logger.error(f"Unhandled exception: {exc}")
     return JSONResponse(
         status_code=500,
-        content={"error": "Internal server error", "status_code": 500}
+        content={"error": "Internal server error", "detail": "Internal server error", "status_code": 500}
     )
 
 

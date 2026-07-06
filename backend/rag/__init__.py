@@ -2,7 +2,7 @@
 
 from .document_processor import DocumentProcessor, TextPreprocessor
 from .embeddings import EmbeddingGenerator, DocumentEmbedder, EmbeddingConfig
-from .vector_db import VectorDatabase, HybridRetriever
+from .vector_db import VectorDatabase
 from .rag_fusion import QueryReformulator, RAGFusionRetriever
 
 __all__ = [
@@ -12,7 +12,6 @@ __all__ = [
     'DocumentEmbedder',
     'EmbeddingConfig',
     'VectorDatabase',
-    'HybridRetriever',
     'QueryReformulator',
     'RAGFusionRetriever'
 ]

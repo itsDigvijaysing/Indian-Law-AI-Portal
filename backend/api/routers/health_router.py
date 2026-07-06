@@ -23,19 +23,22 @@ async def health_check(request: Request) -> SystemHealth:
         status = "healthy"
         ai_initialized = True
         vector_status = "operational"
+        llm_status = "active" if ai_service.llm_client else "not_configured"
         total_docs = ai_service.vector_db.get_document_count() if ai_service.vector_db else 0
         agents = len(ai_service.agent_registry.get_all_agents()) if ai_service.agent_registry else 0
     else:
         status = "initializing"
         ai_initialized = False
         vector_status = "not_available"
+        llm_status = "unknown"
         total_docs = 0
         agents = 0
-    
+
     return SystemHealth(
         status=status,
         ai_service_initialized=ai_initialized,
         vector_database_status=vector_status,
+        llm_status=llm_status,
         total_documents=total_docs,
         available_agents=agents
     )

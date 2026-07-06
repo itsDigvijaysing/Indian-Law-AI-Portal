@@ -38,7 +38,20 @@ async def process_documents(
     """
     start_time = time.time()
     settings = get_settings()
-    
+
+    # FAISS flat has no per-document delete, so force_reprocess cannot be
+    # honored in place — be honest about the one supported path.
+    if request.force_reprocess:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Re-processing in place would duplicate chunks (FAISS flat cannot delete "
+                "per document). Full rebuild required: stop the backend, delete "
+                "vector_db/indian_law_db.index and vector_db/indian_law_db.metadata, "
+                "then restart — auto-ingest rebuilds all documents."
+            )
+        )
+
     try:
         logger.info(f"Processing {len(request.file_paths)} documents")
         
@@ -74,7 +87,7 @@ async def process_documents(
         
         # Build response
         response = DocumentUploadResponse(
-            success=len(result["processed"]) > 0,
+            success=len(result["failed"]) == 0,
             processed=[
                 DocumentProcessingResult(
                     file=item["file"],
@@ -87,13 +100,20 @@ async def process_documents(
                     error=item["error"]
                 ) for item in result["failed"]
             ],
+            skipped=[
+                DocumentProcessingResult(
+                    file=item["file"]
+                ) for item in result.get("skipped", [])
+            ],
             total_chunks=result["total_chunks"],
             processing_time_ms=processing_time
         )
         
         logger.info(f"Document processing completed in {processing_time:.2f}ms")
         return response
-        
+
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error processing documents: {e}")
         raise HTTPException(
@@ -154,6 +174,8 @@ async def get_system_statistics(
         
         response = SystemStatistics(
             initialized=stats.get("initialized", False),
+            llm_status=stats.get("llm_status", "unknown"),
+            llm_message=stats.get("llm_message", ""),
             vector_db=stats.get("vector_db", {}),
             agents=stats.get("agents", 0),
             models=stats.get("models", {}),

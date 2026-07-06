@@ -1,38 +1,110 @@
-.header {
-  background: var(--primary-gradient);
-  color: white;
-  text-align: center;
-  padding: 2rem 1rem;
-  margin-bottom: 2rem;
-  border-radius: var(--border-radius);
-  box-shadow: var(--shadow);
-  position: relative;
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  backdrop-filter: saturate(180%) blur(12px);
+  -webkit-backdrop-filter: saturate(180%) blur(12px);
+  border-bottom: 1px solid var(--border);
 }
 
-.header h1 {
-  margin: 0;
-  font-size: 2.5rem;
-  font-weight: 300;
+.topbar-inner {
+  max-width: 1180px;
+  margin: 0 auto;
+  height: 60px;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
 }
 
-.header p {
-  margin: 0.5rem 0 0 0;
-  opacity: 0.9;
-  font-size: 1.1rem;
+/* Wordmark */
+.brand {
+  display: flex; align-items: center; gap: 10px;
+  background: none; border: none; cursor: pointer; padding: 4px; margin: -4px;
+  border-radius: 8px;
+}
+.brand:hover { background: var(--surface-2); }
+.brand-flag {
+  display: block;
+  flex-shrink: 0;
+  border-radius: 8px;
+}
+.brand-name {
+  font-size: 1.02rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+.brand-dim { color: var(--text-3); font-weight: 600; }
+
+/* Right cluster */
+.topbar-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
-.header-badge {
-  display: inline-block;
-  margin-top: 0.75rem;
-  padding: 4px 12px;
-  background: rgba(255, 255, 255, 0.2);
-  border: 1px solid rgba(255, 255, 255, 0.4);
-  border-radius: 20px;
-  font-size: 0.85rem;
+/* Status */
+.topbar-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+  color: var(--text-2);
 }
 
-@media (max-width: 768px) {
-  .header h1 {
-    font-size: 2rem;
-  }
+/* Icon buttons (theme, new) */
+.icon-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 32px; padding: 0 9px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--text-2);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.icon-btn:hover { background: var(--surface-2); color: var(--text); border-color: var(--border-strong); }
+.new-btn { font-size: 0.82rem; font-weight: 500; }
+.new-label { line-height: 1; }
+.status-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--text-3);
+  flex-shrink: 0;
+}
+.status-dot.ok { background: var(--pos); box-shadow: 0 0 0 3px var(--pos-weak); }
+.status-dot.warn { background: var(--warn); box-shadow: 0 0 0 3px var(--warn-weak); }
+.status-dot.idle { background: var(--text-3); animation: blink 1.4s ease-in-out infinite; }
+@keyframes blink { 50% { opacity: 0.35; } }
+
+.limited-pill {
+  padding: 2px 8px;
+  border-radius: var(--pill);
+  background: var(--warn-weak);
+  color: var(--warn);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+/* Mobile menu (hamburger) */
+.menu-btn {
+  display: none;
+  flex-direction: column;
+  gap: 4px;
+  width: 34px; height: 34px;
+  margin-left: -6px;
+  padding: 8px 7px;
+  background: none; border: none; cursor: pointer;
+  border-radius: 8px;
+}
+.menu-btn span { height: 1.5px; background: var(--text-2); border-radius: 2px; }
+.menu-btn:hover { background: var(--surface-2); }
+
+@media (max-width: 860px) {
+  .menu-btn { display: flex; }
+  .status-text { display: none; }
+  .new-label { display: none; }
+  .topbar-inner { padding: 0 16px; }
 }

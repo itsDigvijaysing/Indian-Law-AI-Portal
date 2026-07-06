@@ -3,21 +3,9 @@
 
 set -u
 BASE=http://localhost:8000
-PASS=0; FAIL=0
-RED=$'\e[31m'; GRN=$'\e[32m'; YEL=$'\e[33m'; RST=$'\e[0m'
+YEL=$'\e[33m'; RST=$'\e[0m'
 
 hr() { printf '%.s-' {1..72}; echo; }
-
-check() {
-  local name="$1"; local cond="$2"
-  if eval "$cond"; then
-    echo "${GRN}PASS${RST} $name"
-    PASS=$((PASS+1))
-  else
-    echo "${RED}FAIL${RST} $name"
-    FAIL=$((FAIL+1))
-  fi
-}
 
 probe() {
   local label="$1"; local method="$2"; local path="$3"; local body="${4:-}"
@@ -60,6 +48,42 @@ probe "6.4 edge: very long"   POST /api/v1/query "$(python3 -c 'import json; pri
 
 probe "7.0 advanced query (explain reasoning)" POST /api/v1/query/advanced '{"query":"What is the punishment for theft?","explain_reasoning":true,"fusion_queries":3}'
 probe "7.1 advanced query (filtered to Constitution)" POST /api/v1/query/advanced '{"query":"What are fundamental rights?","filters":{"document_types":["Constitution_of_India"]}}'
+
+# --- Citations & grounding (local-Perplexity behavior) ---
+
+probe "8.0 citations: exact section retrieval" POST /api/v1/query '{"query":"What does Section 420 IPC say about cheating?"}'
+# Expect: answer contains [n] markers; retrieval_sources[0] should be Indian_Penal_Code_1860 / Section 420 (or 415-420 range)
+
+probe "8.1 citations: answer carries [n] markers" POST /api/v1/query '{"query":"What is the punishment for theft under IPC?"}'
+# Expect: [1]-style markers in answer; every marker id present in retrieval_sources; cited:true on those entries
+
+probe "8.2 grounding: refusal on non-legal query" POST /api/v1/query '{"query":"What is the best recipe for biryani?"}'
+# Expect: answer starts "The provided legal documents do not contain sufficient information..."; confidence <= 0.2
+
+probe "8.3 admin: re-process skips ingested docs" POST /api/v1/admin/documents/process '{"file_paths":["Indian_Penal_Code_1860.pdf"]}'
+# Expect: processed 0, skipped 1
+
+# --- New-domain routing (25-doc corpus) ---
+
+probe "8.4 route: cheque bounce → Commercial" POST /api/v1/query '{"query":"What is the punishment for cheque bounce under Section 138?"}'
+# Expect: detected_category "Commercial", cites Negotiable Instruments Act Section 138
+
+probe "8.5 route: Hindu divorce → Family" POST /api/v1/query '{"query":"What are the grounds for divorce under the Hindu Marriage Act?"}'
+# Expect: detected_category "Family", cites Hindu Marriage Act Section 13
+
+probe "8.6 route: cybercrime → Digital" POST /api/v1/query '{"query":"What does the IT Act say about hacking a computer system?"}'
+# Expect: detected_category "Digital", cites Information Technology Act
+
+probe "8.7 era split: murder cites both BNS and IPC" POST /api/v1/query '{"query":"What is the punishment for murder?"}'
+# Expect: retrieval_sources include both BNS (post-2024) and IPC (pre-2024); answer notes the 1 July 2024 cut-over
+
+hr
+echo "${YEL}>>> 9.0 streaming query (SSE)${RST}"
+echo "    POST /api/v1/query/stream"
+curl -N -s -m 120 -X POST "$BASE/api/v1/query/stream" -H 'Content-Type: application/json' \
+  -d '{"query":"What is Article 21 of the Constitution?"}' \
+  | grep -c "^event: token" | xargs -I{} echo "token events received: {}"
+# Expect: sources event first, then dozens of token events, then done
 
 hr
 echo "Done."

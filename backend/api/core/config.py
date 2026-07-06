@@ -65,15 +65,26 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL: str = Field(default="gemini-embedding-001")
     
     # Vector Database Configuration
+    # (index dimension comes from the embedding model at runtime, not config)
     VECTOR_DB_TYPE: str = Field(default="faiss")
     VECTOR_DB_PATH: str = Field(default="./vector_db/")
-    VECTOR_DIMENSION: int = Field(default=768)
     
     # RAG Configuration
     RAG_FUSION_QUERIES: int = Field(default=3)
     TOP_K_RETRIEVAL: int = Field(default=10)
     CHUNK_SIZE: int = Field(default=500)
     CHUNK_OVERLAP: int = Field(default=50)
+
+    # Retrieval quality
+    RERANK_ENABLED: bool = Field(default=True)
+    RERANK_MODEL: str = Field(default="cross-encoder/ms-marco-MiniLM-L6-v2")
+    RERANK_CANDIDATES: int = Field(default=24)
+    CITED_SOURCES_K: int = Field(default=8)
+
+    # Two-stage category router (classify query -> scope retrieval to that
+    # legal category's documents). Soft boost, never hard-exclude.
+    CATEGORY_ROUTING_ENABLED: bool = Field(default=True)
+    CLASSIFIER_MIN_CONFIDENCE: float = Field(default=0.3)
     
     # API Configuration
     API_HOST: str = Field(default="0.0.0.0")
@@ -134,9 +145,13 @@ def validate_environment():
     """Validate required environment variables and configurations"""
     try:
         settings = get_settings()
-        
-        # Check required API key
-        if not settings.GOOGLE_API_KEY or settings.GOOGLE_API_KEY == "your_google_api_key_here":
+
+        # Check the API key for the configured provider
+        provider = (settings.LLM_PROVIDER or "gemini").lower()
+        if provider == "groq":
+            if not settings.GROQ_API_KEY:
+                raise ValueError("LLM_PROVIDER=groq requires GROQ_API_KEY to be set")
+        elif not settings.GOOGLE_API_KEY or settings.GOOGLE_API_KEY == "your_google_api_key_here":
             raise ValueError("GOOGLE_API_KEY is required and must be set to a valid API key")
         
         # Check assets directory

@@ -32,7 +32,7 @@ def setup_environment():
         content = env_example.read_text()
         env_file.write_text(content)
         print("✓ Created .env file from .env.example")
-        print("⚠️  Please edit .env file and add your Google API key")
+        print("⚠️  Please edit .env and add your GROQ_API_KEY (or GOOGLE_API_KEY with LLM_PROVIDER=gemini)")
     elif env_file.exists():
         print("✓ Environment file already exists")
     else:
@@ -80,17 +80,17 @@ def display_usage():
     print("="*60)
     print("\n📋 NEXT STEPS:")
     print("\n1. Environment Setup:")
-    print("   - Edit .env file and add your Google API key")
-    print("   - GOOGLE_API_KEY=your_actual_api_key_here")
-    
+    print("   - Edit .env and add your GROQ_API_KEY (recommended)")
+    print("   - Or set LLM_PROVIDER=gemini with GOOGLE_API_KEY")
+
     print("\n2. Add Legal Documents:")
     print("   - Place PDF files in the 'assets/' folder")
     print("   - Examples: IPC.pdf, CrPC.pdf, Constitution.pdf")
-    
+
     print("\n3. Start the Application:")
     print("   ./start_dev.sh")
-    print("   # Or manually:")
-    print("   cd backend && python main.py")
+    print("   # Or manually (ALWAYS from the project root, never inside backend/):")
+    print("   python backend/main.py")
     print("   # In another terminal:")
     print("   cd frontend && npm start")
     
@@ -113,7 +113,7 @@ def display_usage():
     print("   └── FastAPI Backend + React Frontend")
     
     print("\n⚠️  IMPORTANT NOTES:")
-    print("   - Requires Google AI API key for LLM features")
+    print("   - Requires a Groq API key (or Google AI key with LLM_PROVIDER=gemini) for LLM features")
     print("   - Add legal PDF documents to assets/ folder")
     print("   - First document processing may take time")
     print("   - This is for educational/research purposes")

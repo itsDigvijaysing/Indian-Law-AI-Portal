@@ -1,6 +1,6 @@
 # Indian Law AI Portal
 
-An **AI-powered legal query assistant** for Indian laws using **RAG (Retrieval-Augmented Generation)** and specialized **agentic AI**. It answers questions about Indian legal matters by retrieving from official government law books (Constitution, BNS, BNSS, IPC, CrPC, CPC) and routing the query to a domain-expert agent.
+An **AI-powered legal query assistant** for Indian laws — a *local Perplexity*: every answer is grounded **exclusively** in **25 official government law books** (the Constitution and the criminal/civil/personal/commercial/digital/labour codes) with inline `[n]` citations that resolve to the real document, page, and legal section. A two-stage router classifies each question's legal area first, then retrieves within that area's statutes. If the documents can't answer, it says so instead of guessing. No internet sources at runtime, by design.
 
 ![Indian Law AI Portal demo](assets/Laws_portal.gif)
 
@@ -8,12 +8,17 @@ An **AI-powered legal query assistant** for Indian laws using **RAG (Retrieval-A
 
 ## Features
 
-- **4 specialized legal agents** — Criminal, Civil, Constitutional, General — each with tailored prompts and keyword routing
-- **RAG Fusion (n=3)** query reformulations for better recall, with reciprocal-rank fusion across variants
-- **FAISS vector search** over chunked official PDFs (~2,600 chunks across 6 documents)
+- **25-document corpus** across criminal, civil, personal, commercial, digital and labour law — every PDF classified by legal category and validity era in a metadata registry
+- **Two-stage category router** — a query classifier detects the legal area (e.g. cheque bounce → Commercial, divorce → Family), then retrieval is scoped to that area's statutes plus its linked procedural/limitation/constitutional docs (soft boost, never hard-exclude — cross-cutting queries keep full recall)
+- **Era / validity grounding** — the pre/post-1-July-2024 split (IPC/CrPC/Evidence Act → BNS/BNSS/BSA); criminal answers give both the current and legacy provision with the date each applies
+- **Grounded `[n]` citations** — answers cite numbered sources; each maps to a PDF, a real section label ("Section 302", "Order VII Rule 1"), a page range, and a category/era tag. Citations are validated server-side; invented ones are stripped
+- **Grounded refusal** — off-corpus questions get an explicit "the provided legal documents do not contain sufficient information" instead of hallucinated law
+- **Hybrid retrieval** — FAISS vector search (bge-small-en-v1.5, local) + BM25 keyword search + exact section-label lookup, fused with reciprocal-rank fusion, plus a cross-encoder reranker
+- **SSE streaming** — token-by-token answers with the citation table sent first
+- **10 domain agents** — Criminal, Constitutional, Civil, Family, Commercial, Property, Digital, Labour, Evidence, General — config-driven, each supplying domain flavor to one shared grounded prompt
+- **Honest confidence** — citation-driven scoring (refusals 0.15, uncited 0.35, cited answers scale up to 0.95)
 - **Two LLM providers** — Groq (Llama 3.3 70B, recommended) or Google Gemini, switchable via `LLM_PROVIDER`
-- **Local embeddings by default** (`all-MiniLM-L6-v2`) — no API quota for ingestion
-- **FastAPI** backend with auto-generated docs at `/docs`, **React 18** frontend
+- **FastAPI** backend with auto-generated docs at `/docs`, **React 18** frontend with clickable citation chips
 
 ---
 
@@ -21,15 +26,21 @@ An **AI-powered legal query assistant** for Indian laws using **RAG (Retrieval-A
 
 ```mermaid
 flowchart LR
-    Q[User Query] --> RF[RAG Fusion<br/>3 reformulations]
-    RF --> VDB[(FAISS Vector DB<br/>~2,600 chunks)]
-    VDB --> AR[Agent Registry]
-    AR --> A1[Criminal] & A2[Civil] & A3[Constitutional] & A4[General]
-    A1 & A2 & A3 & A4 --> LLM[Groq Llama 3.3 70B<br/>or Google Gemini]
-    LLM --> R[Structured JSON Response]
+    Q[User Query] --> CLS[Query classifier<br/>→ legal category]
+    CLS --> SCOPE[Preferred docs<br/>category + linked statutes]
+    Q --> RF[RAG Fusion<br/>3 reformulations]
+    RF --> VDB[(FAISS Vector DB<br/>9,487 chunks · 25 docs)]
+    Q --> BM[BM25 + label lookup]
+    BM --> RRF[RRF fusion + category boost<br/>+ CrossEncoder rerank]
+    VDB --> RRF
+    SCOPE --> RRF
+    RRF --> AR[Domain agent<br/>by category]
+    AR --> LLM[Groq Llama 3.3 70B<br/>or Google Gemini<br/>grounded + era rule]
+    LLM --> V[Citation validation<br/>+ confidence scoring]
+    V --> R[Cited JSON / SSE stream]
 
     subgraph Ingest[" "]
-        P[PDFs in assets/] --> C[Chunk] --> E[Embed<br/>MiniLM-L6-v2] --> VDB
+        P[25 PDFs in assets/] --> C[Section-aware chunking<br/>real pages + sections] --> M[Stamp category + era<br/>from registry] --> E[Embed<br/>bge-small-en-v1.5] --> VDB
     end
 ```
 
@@ -59,9 +70,9 @@ GROQ_MODEL=llama-3.3-70b-versatile
 
 # (only needed if LLM_PROVIDER=gemini)
 GOOGLE_API_KEY=your_google_api_key_here
-LLM_MODEL=gemini-2.5-flash
+LLM_MODEL=gemini-2.0-flash
 
-EMBEDDING_MODEL=all-MiniLM-L6-v2       # local; switch to gemini-embedding-001 only on a paid Google tier
+EMBEDDING_MODEL=BAAI/bge-small-en-v1.5  # local; do NOT use gemini-embedding-001 on the free tier
 API_PORT=8000
 ```
 
@@ -70,7 +81,7 @@ API_PORT=8000
 ```bash
 conda create -n my_env -c conda-forge python=3.11 -y
 conda activate my_env
-pip install -r requirements.txt groq
+pip install -r requirements.txt
 ```
 
 ### 3. Run
@@ -92,19 +103,21 @@ cd frontend && npm install && npm start    # in another terminal
 | Backend API | http://localhost:8000 |
 | API docs (Swagger) | http://localhost:8000/docs |
 
-> The backend resolves `assets/` and `vector_db/` against the project root, so always launch from the project root. On first start it auto-ingests every PDF in `assets/` (~30 seconds with local embeddings).
+> The backend resolves `assets/` and `vector_db/` against the project root, so always launch from the project root. On first start it auto-ingests every PDF in `assets/` (~2 minutes with local embeddings; downloads the embedding + reranker models once).
 
 ---
 
 ## Adding documents
 
-Drop PDFs into `assets/`. They get auto-ingested on next backend start. To trigger a manual reprocess:
+Drop **new** PDFs into `assets/`. They get auto-ingested on next backend start, or on demand:
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/admin/documents/process \
      -H 'Content-Type: application/json' \
-     -d '{"file_paths": ["IPC.pdf", "CrPC.pdf"]}'
+     -d '{"file_paths": ["New_Act_2026.pdf"]}'
 ```
+
+Already-ingested documents are **skipped** (reported in the `skipped` field) — FAISS flat has no per-document delete, so re-processing in place would duplicate chunks. `force_reprocess: true` returns **409** with the honest fix: to rebuild, stop the backend, delete `vector_db/indian_law_db.index` and `vector_db/indian_law_db.metadata`, and restart.
 
 ---
 
@@ -112,27 +125,35 @@ curl -X POST http://localhost:8000/api/v1/admin/documents/process \
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `POST` | `/api/v1/query` | Process a legal query |
+| `POST` | `/api/v1/query` | Process a legal query (cited JSON) |
+| `POST` | `/api/v1/query/stream` | Same, streamed over SSE: `sources` event first, then `token` deltas, then `done` with validated citations |
 | `POST` | `/api/v1/query/advanced` | Query with filters, custom fusion count, reasoning trace |
 | `GET` | `/api/v1/agents` | List available agents |
 | `POST` | `/api/v1/validate` | Validate a query without processing it |
-| `POST` | `/api/v1/admin/documents/process` | Reprocess specific PDFs |
+| `POST` | `/api/v1/admin/documents/process` | Ingest new PDFs (skips already-ingested; 409 on `force_reprocess`) |
 | `GET` | `/api/v1/admin/documents/list` | List PDFs in `assets/` |
 | `GET` | `/api/v1/admin/statistics` | Vector DB stats, model info, configuration |
-| `GET` | `/health/` | System health |
-| `GET` | `/health/ready` | Readiness probe |
+| `POST` | `/api/v1/admin/database/save` | Persist the vector DB to disk |
+| `POST` | `/api/v1/admin/database/clear` | Clear the in-memory vector DB (`?confirm=true`) |
+| `POST` | `/api/v1/admin/system/reinitialize` | Re-run full AI service initialization |
+| `GET` | `/health/` | System health (incl. `llm_status`) |
+| `GET` | `/health/ready` / `/health/live` / `/health/ping` | Probes |
 
 ---
 
 ## Sample queries
 
-| Domain | Query | Routes to |
-|---|---|---|
-| Criminal | `What is the punishment for theft under IPC?` | Criminal Law Agent |
-| Criminal (BNS) | `What does the Bharatiya Nyaya Sanhita say about murder?` | Criminal Law Agent |
-| Civil | `What is the limitation period for filing a civil suit?` | Civil Law Agent |
-| Constitutional | `Explain the right to life under Article 21 of the Indian Constitution` | Constitutional Law Agent |
-| Procedural | `What does the law say about plea bargaining?` | Criminal Law Agent (CrPC) |
+The router classifies each query into a legal category and returns it as `detected_category` (also the `agent_type` that framed the answer):
+
+| Query | detected_category / agent |
+|---|---|
+| `What is the punishment for theft under IPC?` | Criminal |
+| `What is the punishment for cheque bounce under Section 138?` | Commercial |
+| `What are the grounds for divorce under the Hindu Marriage Act?` | Family |
+| `Explain the right to life under Article 21 of the Constitution` | Constitutional |
+| `What is the limitation period for filing a civil suit?` | Civil Procedure |
+| `How is cybercrime handled under the IT Act?` | Digital |
+| `What can you do?` | Assistant (capability answer, no citations) |
 
 ```bash
 curl -s http://localhost:8000/api/v1/query \
@@ -140,23 +161,34 @@ curl -s http://localhost:8000/api/v1/query \
      -d '{"query":"What is the punishment for theft under IPC?"}' | jq
 ```
 
-Real response (Groq Llama 3.3 70B, retrieved from the actual ingested PDFs):
+Real response (Groq Llama 3.3 70B, retrieved from the actual ingested PDFs; trimmed):
 
 ```json
 {
-  "agent_type": "Criminal Law",
-  "confidence_score": 1.0,
+  "agent_type": "Criminal",
+  "detected_category": "Criminal",
+  "confidence_score": 0.623,
   "retrieved_documents": 10,
-  "answer": "**Direct Answer:** The punishment for theft under the Indian Penal Code (IPC) and its corresponding provisions in the Bharatiya Nyaya Sanhita (BNS) can vary depending on the circumstances of the case. Under the IPC, Section 380 specifically deals with 'Theft in dwelling house, etc.' and prescribes a punishment of imprisonment for a term which may extend to seven years, and also liable to fine. Section 381 of the IPC pertains to 'Theft by clerk or servant of property in possession of master' with a similar punishment...",
+  "answer": "The punishment for theft under the current law is imprisonment of either description for a term which may extend to three years, or with fine, or with both [1]...",
+  "sources": [
+    "Section 379 (Indian_Penal_Code_1860)",
+    "Section 303 (Bharatiya_Nyaya_Sanhita_2023)"
+  ],
   "retrieval_sources": [
-    {"document": "Indian_Penal_Code_1860",         "section": "Section-88",  "similarity_score": 0.539},
-    {"document": "Code_of_Criminal_Procedure_1973", "section": "Section-624", "similarity_score": 0.518},
-    {"document": "Code_of_Criminal_Procedure_1973", "section": "Section-626", "similarity_score": 0.530}
+    {"id": 1, "document_title": "Indian Penal Code, 1860", "section": "Section 379",
+     "category": "Criminal", "era": "pre-2024", "page_start": 95, "page_end": 95,
+     "similarity_score": 0.667, "cited": true,
+     "snippet": "379. Punishment for theft .—Whoever commits theft shall be punished..."},
+    {"id": 2, "document_title": "Indian Penal Code, 1860", "section": "Section 382",
+     "category": "Criminal", "era": "pre-2024", "page_start": 95, "page_end": 96,
+     "similarity_score": 0.658, "cited": false, "snippet": "..."}
   ]
 }
 ```
 
-A bash regression script that exercises every endpoint (health, stats, validate, query, advanced query, edge cases — 17 cases) ships with the repo:
+The `[n]` markers in `answer` index into `retrieval_sources` by `id` — that array is the citation table (`cited: true` marks sources the answer actually used; each carries `category` and `era` — `pre-2024` legacy / `post-2024` current / `current`). `confidence_score` is citation-driven: 0.15 for grounded refusals, 0.35 for uncited answers, up to 0.95 for well-cited ones. It never reaches 1.0. Meta questions ("what can you do?") return an honest capability summary with `agent_type: "Assistant"` and no fabricated citations.
+
+A bash regression script that exercises every endpoint (health, stats, validate, query, advanced query, edge cases, citations/grounding, category routing, streaming — 31 probes) ships with the repo:
 
 ```bash
 ./test_runner.sh
@@ -168,15 +200,19 @@ A bash regression script that exercises every endpoint (health, stats, validate,
 
 | Variable | Default | Description |
 |---|---|---|
-| `LLM_PROVIDER` | `gemini` | `groq` or `gemini` |
+| `LLM_PROVIDER` | `gemini` | `groq` or `gemini` (`.env.example` ships with `groq`) |
 | `GROQ_API_KEY` | – | Required when `LLM_PROVIDER=groq` |
 | `GROQ_MODEL` | `llama-3.3-70b-versatile` | Groq model ID |
 | `GOOGLE_API_KEY` | – | Required when `LLM_PROVIDER=gemini` |
 | `LLM_MODEL` | `gemini-2.0-flash` | Gemini model |
-| `EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | Local; or `gemini-embedding-001` on a paid Google tier |
+| `EMBEDDING_MODEL` | `gemini-embedding-001` | Code default is the Google model — **always override to a local one** (`.env.example` sets `BAAI/bge-small-en-v1.5`); the Google path rate-limits during ingestion on the free tier |
 | `RAG_FUSION_QUERIES` | `3` | Query reformulation count |
-| `TOP_K_RETRIEVAL` | `10` | Top-K vector results |
-| `CHUNK_SIZE` | `500` | Words per chunk |
+| `TOP_K_RETRIEVAL` | `10` | Top-K fused results |
+| `RERANK_ENABLED` | `true` | Cross-encoder rerank of the fused head |
+| `RERANK_MODEL` | `cross-encoder/ms-marco-MiniLM-L6-v2` | Reranker (local, ~80 MB one-time download) |
+| `RERANK_CANDIDATES` | `24` | Fused candidates fed to the reranker |
+| `CITED_SOURCES_K` | `8` | Sources numbered `[1]..[K]` into the prompt and returned |
+| `CHUNK_SIZE` | `500` | Words per chunk window |
 | `CHUNK_OVERLAP` | `50` | Word overlap between chunks |
 | `API_PORT` | `8000` | Backend port |
 | `DEBUG_MODE` | `true` | Uvicorn hot reload |
@@ -185,7 +221,7 @@ A bash regression script that exercises every endpoint (health, stats, validate,
 
 ## Tech stack
 
-FastAPI · React 18 · FAISS · Sentence Transformers (local embeddings) · Groq Llama 3.3 70B / Google Gemini · RAG Fusion · PyPDF2
+FastAPI · React 18 · FAISS · BM25 (rank_bm25) · Sentence Transformers (bge-small embeddings + cross-encoder reranker, all local) · Groq Llama 3.3 70B / Google Gemini · RAG Fusion · PyPDF2 · SSE
 
 ---
 

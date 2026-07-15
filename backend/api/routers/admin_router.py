@@ -7,7 +7,7 @@ Handles administrative endpoints for document management and system control.
 import os
 import time
 from typing import Any, Dict
-from fastapi import APIRouter, HTTPException, Request, Depends
+from fastapi import APIRouter, HTTPException, Depends
 from loguru import logger
 
 from ..models.schemas import (
@@ -16,13 +16,14 @@ from ..models.schemas import (
 )
 from ..core.ai_service import AIService
 from ..core.config import get_settings
-from ..dependencies import get_ai_service
+from ..dependencies import get_ai_service, require_admin, safe_error_detail
 
 
 router = APIRouter()
 
 
-@router.post("/documents/process", response_model=DocumentUploadResponse)
+@router.post("/documents/process", response_model=DocumentUploadResponse,
+             dependencies=[Depends(require_admin)])
 async def process_documents(
     request: DocumentUploadRequest,
     ai_service: AIService = Depends(get_ai_service)
@@ -55,7 +56,11 @@ async def process_documents(
     try:
         logger.info(f"Processing {len(request.file_paths)} documents")
         
-        # Validate file paths
+        # Validate file paths. Only PDFs INSIDE the assets directory may be
+        # ingested — absolute paths and ../ traversal outside it are rejected,
+        # otherwise any PDF on the server could be pulled into the corpus and
+        # read back through queries.
+        assets_root = os.path.realpath(settings.ASSETS_PATH)
         validated_paths = []
         for file_path in request.file_paths:
             # Convert relative paths to absolute paths
@@ -63,15 +68,20 @@ async def process_documents(
                 abs_path = os.path.join(settings.ASSETS_PATH, file_path)
             else:
                 abs_path = file_path
-            
+            abs_path = os.path.realpath(abs_path)
+
+            if os.path.commonpath([assets_root, abs_path]) != assets_root:
+                logger.warning(f"Rejected path outside assets directory: {file_path}")
+                continue
+
             if not os.path.exists(abs_path):
                 logger.warning(f"File not found: {abs_path}")
                 continue
-            
+
             if not abs_path.lower().endswith('.pdf'):
                 logger.warning(f"Skipping non-PDF file: {abs_path}")
                 continue
-            
+
             validated_paths.append(abs_path)
         
         if not validated_paths:
@@ -118,7 +128,7 @@ async def process_documents(
         logger.error(f"Error processing documents: {e}")
         raise HTTPException(
             status_code=500,
-            detail=f"Error processing documents: {str(e)}"
+            detail=safe_error_detail("Error processing documents", e)
         )
 
 
@@ -126,43 +136,45 @@ async def process_documents(
 async def list_available_documents() -> Dict[str, Any]:
     """
     List available PDF documents in the assets directory.
+
+    Stays public (it powers the frontend's Corpus panel), so it exposes only
+    filenames and sizes of the public statutes — no filesystem paths.
     """
     try:
         settings = get_settings()
         assets_path = settings.ASSETS_PATH
-        
+
         if not os.path.exists(assets_path):
-            return {"documents": [], "total": 0, "assets_path": assets_path}
-        
+            return {"documents": [], "total": 0}
+
         documents = []
         for file in os.listdir(assets_path):
             if file.lower().endswith('.pdf'):
                 file_path = os.path.join(assets_path, file)
                 file_stats = os.stat(file_path)
-                
+
                 documents.append({
                     "filename": file,
-                    "path": file_path,
                     "size_bytes": file_stats.st_size,
                     "size_mb": round(file_stats.st_size / (1024 * 1024), 2),
                     "modified_time": file_stats.st_mtime
                 })
-        
+
         return {
             "documents": documents,
-            "total": len(documents),
-            "assets_path": assets_path
+            "total": len(documents)
         }
-        
+
     except Exception as e:
         logger.error(f"Error listing documents: {e}")
         raise HTTPException(
             status_code=500,
-            detail=f"Error listing documents: {str(e)}"
+            detail=safe_error_detail("Error listing documents", e)
         )
 
 
-@router.get("/statistics", response_model=SystemStatistics)
+@router.get("/statistics", response_model=SystemStatistics,
+            dependencies=[Depends(require_admin)])
 async def get_system_statistics(
     ai_service: AIService = Depends(get_ai_service)
 ) -> SystemStatistics:
@@ -188,11 +200,11 @@ async def get_system_statistics(
         logger.error(f"Error getting statistics: {e}")
         raise HTTPException(
             status_code=500,
-            detail=f"Error retrieving system statistics: {str(e)}"
+            detail=safe_error_detail("Error retrieving system statistics", e)
         )
 
 
-@router.post("/database/clear")
+@router.post("/database/clear", dependencies=[Depends(require_admin)])
 async def clear_vector_database(
     ai_service: AIService = Depends(get_ai_service),
     confirm: bool = False
@@ -228,11 +240,11 @@ async def clear_vector_database(
         logger.error(f"Error clearing database: {e}")
         raise HTTPException(
             status_code=500,
-            detail=f"Error clearing vector database: {str(e)}"
+            detail=safe_error_detail("Error clearing vector database", e)
         )
 
 
-@router.post("/database/save")
+@router.post("/database/save", dependencies=[Depends(require_admin)])
 async def save_vector_database(
     ai_service: AIService = Depends(get_ai_service)
 ) -> Dict[str, Any]:
@@ -261,11 +273,11 @@ async def save_vector_database(
         logger.error(f"Error saving database: {e}")
         raise HTTPException(
             status_code=500,
-            detail=f"Error saving vector database: {str(e)}"
+            detail=safe_error_detail("Error saving vector database", e)
         )
 
 
-@router.post("/system/reinitialize")
+@router.post("/system/reinitialize", dependencies=[Depends(require_admin)])
 async def reinitialize_system(
     ai_service: AIService = Depends(get_ai_service)
 ) -> Dict[str, Any]:
@@ -274,10 +286,16 @@ async def reinitialize_system(
     """
     try:
         logger.info("Reinitializing AI system...")
-        
+
+        # Pick up any .env changes: get_settings is process-cached (lru_cache) and
+        # the service holds its own copy, so both must be refreshed before rebuild —
+        # otherwise "reinitialize after config changes" would silently reuse old settings.
+        get_settings.cache_clear()
+        ai_service.settings = get_settings()
+
         # Cleanup current state
         await ai_service.cleanup()
-        
+
         # Reinitialize
         await ai_service.initialize()
         
@@ -290,5 +308,5 @@ async def reinitialize_system(
         logger.error(f"Error reinitializing system: {e}")
         raise HTTPException(
             status_code=500,
-            detail=f"Error reinitializing system: {str(e)}"
+            detail=safe_error_detail("Error reinitializing system", e)
         )

@@ -4,9 +4,8 @@ Embedding Generation Module
 Handles text-to-vector conversion using various embedding models.
 """
 
-import os
 import numpy as np
-from typing import List, Dict, Any, Optional
+from typing import List, Dict
 from sentence_transformers import SentenceTransformer
 import google.generativeai as genai
 from loguru import logger
@@ -126,7 +125,6 @@ class DocumentEmbedder:
     
     def __init__(self, embedding_generator: EmbeddingGenerator):
         self.embedding_generator = embedding_generator
-        self.embeddings_cache = {}
         logger.info("DocumentEmbedder initialized")
     
     def embed_chunks(self, chunks: List[Dict]) -> List[Dict]:
@@ -151,88 +149,3 @@ class DocumentEmbedder:
         
         logger.info(f"Successfully added embeddings to {len(enriched_chunks)} chunks")
         return enriched_chunks
-    
-    def embed_query(self, query: str) -> np.ndarray:
-        """Generate embedding for a search query"""
-        return self.embedding_generator.generate_embedding(query)
-    
-    def save_embeddings(self, chunks: List[Dict], filepath: str):
-        """Save chunks with embeddings to file"""
-        try:
-            # Convert numpy arrays to lists for JSON serialization
-            serializable_chunks = []
-            for chunk in chunks:
-                serializable_chunk = chunk.copy()
-                if 'embedding' in serializable_chunk:
-                    serializable_chunk['embedding'] = serializable_chunk['embedding'].tolist()
-                serializable_chunks.append(serializable_chunk)
-            
-            import json
-            with open(filepath, 'w') as f:
-                json.dump(serializable_chunks, f, indent=2)
-            
-            logger.info(f"Saved {len(chunks)} chunks with embeddings to {filepath}")
-        
-        except Exception as e:
-            logger.error(f"Error saving embeddings: {e}")
-    
-    def load_embeddings(self, filepath: str) -> List[Dict]:
-        """Load chunks with embeddings from file"""
-        try:
-            import json
-            with open(filepath, 'r') as f:
-                chunks = json.load(f)
-            
-            # Convert embedding lists back to numpy arrays
-            for chunk in chunks:
-                if 'embedding' in chunk:
-                    chunk['embedding'] = np.array(chunk['embedding'])
-            
-            logger.info(f"Loaded {len(chunks)} chunks with embeddings from {filepath}")
-            return chunks
-        
-        except Exception as e:
-            logger.error(f"Error loading embeddings: {e}")
-            return []
-
-
-class EmbeddingConfig:
-    """Configuration class for embedding models and parameters"""
-    
-    # Available embedding models
-    SENTENCE_TRANSFORMER_MODELS = {
-        "all-MiniLM-L6-v2": {"dim": 384, "description": "Fast, lightweight model"},
-        "all-mpnet-base-v2": {"dim": 768, "description": "High quality, slower"},
-        "multi-qa-MiniLM-L6-cos-v1": {"dim": 384, "description": "Optimized for QA"},
-        "paraphrase-multilingual-MiniLM-L12-v2": {"dim": 384, "description": "Multilingual support"}
-    }
-    
-    GOOGLE_MODELS = {
-        "text-embedding-004": {"dim": 768, "description": "Latest Google embedding model"},
-        "textembedding-gecko": {"dim": 768, "description": "Google's Gecko model"}
-    }
-    
-    @classmethod
-    def get_recommended_model(cls, use_case: str = "legal") -> tuple:
-        """Get recommended model for specific use case"""
-        if use_case == "legal":
-            # For legal documents, prefer higher quality models
-            return ("sentence-transformers", "all-mpnet-base-v2")
-        elif use_case == "fast":
-            # For fast processing
-            return ("sentence-transformers", "all-MiniLM-L6-v2")
-        elif use_case == "multilingual":
-            # For multilingual support
-            return ("sentence-transformers", "paraphrase-multilingual-MiniLM-L12-v2")
-        else:
-            return ("sentence-transformers", "all-MiniLM-L6-v2")
-    
-    @classmethod
-    def get_model_info(cls, model_type: str, model_name: str) -> Dict:
-        """Get information about a specific model"""
-        if model_type == "sentence-transformers":
-            return cls.SENTENCE_TRANSFORMER_MODELS.get(model_name, {})
-        elif model_type == "google":
-            return cls.GOOGLE_MODELS.get(model_name, {})
-        else:
-            return {}

@@ -4,7 +4,6 @@ Configuration Management
 Handles application settings and environment variables.
 """
 
-import os
 from pathlib import Path
 from typing import Optional
 from pydantic import Field
@@ -86,10 +85,26 @@ class Settings(BaseSettings):
     CATEGORY_ROUTING_ENABLED: bool = Field(default=True)
     CLASSIFIER_MIN_CONFIDENCE: float = Field(default=0.3)
     
+    # Daily rate limiting — protects the unpaid LLM budget with a GLOBAL cap on
+    # total answer generations per day (UTC midnight reset). See
+    # core/rate_limiter.py. Set DAILY_QUERY_LIMIT to 0 to block all calls.
+    RATE_LIMIT_ENABLED: bool = Field(default=True)
+    DAILY_QUERY_LIMIT: int = Field(default=25)
+
     # API Configuration
     API_HOST: str = Field(default="0.0.0.0")
     API_PORT: int = Field(default=8000)
     DEBUG_MODE: bool = Field(default=True)
+
+    # Admin protection. Mutating /admin endpoints (process/clear/save/reinitialize)
+    # and /admin/statistics require the X-Admin-Key header to match this value.
+    # When UNSET they are allowed only in DEBUG_MODE (local dev) — a deployed
+    # instance (DEBUG_MODE=false) without a key has them disabled entirely.
+    ADMIN_API_KEY: str = Field(default="")
+
+    # CORS — comma-separated allowed origins. Add your deployed frontend origin
+    # (e.g. "https://your-app.vercel.app") when deploying.
+    ALLOWED_ORIGINS: str = Field(default="http://localhost:3000,http://127.0.0.1:3000")
     
     # Logging Configuration
     LOG_LEVEL: str = Field(default="INFO")
@@ -107,65 +122,3 @@ def get_settings() -> Settings:
     settings.ASSETS_PATH = _resolve_project_path(settings.ASSETS_PATH)
     settings.LOG_FILE = _resolve_project_path(settings.LOG_FILE)
     return settings
-
-
-def setup_logging(settings: Settings):
-    """Setup application logging"""
-    import logging
-    from loguru import logger
-    
-    # Remove default handler
-    logger.remove()
-    
-    # Console handler
-    logger.add(
-        sink=lambda msg: print(msg, end=""),
-        level=settings.LOG_LEVEL,
-        format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
-        colorize=True
-    )
-    
-    # File handler (ensure directory exists)
-    log_dir = os.path.dirname(settings.LOG_FILE)
-    if log_dir and not os.path.exists(log_dir):
-        os.makedirs(log_dir, exist_ok=True)
-    
-    logger.add(
-        settings.LOG_FILE,
-        level=settings.LOG_LEVEL,
-        format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
-        rotation="10 MB",
-        retention="7 days"
-    )
-    
-    logger.info(f"Logging configured - Level: {settings.LOG_LEVEL}, File: {settings.LOG_FILE}")
-
-
-def validate_environment():
-    """Validate required environment variables and configurations"""
-    try:
-        settings = get_settings()
-
-        # Check the API key for the configured provider
-        provider = (settings.LLM_PROVIDER or "gemini").lower()
-        if provider == "groq":
-            if not settings.GROQ_API_KEY:
-                raise ValueError("LLM_PROVIDER=groq requires GROQ_API_KEY to be set")
-        elif not settings.GOOGLE_API_KEY or settings.GOOGLE_API_KEY == "your_google_api_key_here":
-            raise ValueError("GOOGLE_API_KEY is required and must be set to a valid API key")
-        
-        # Check assets directory
-        if not os.path.exists(settings.ASSETS_PATH):
-            os.makedirs(settings.ASSETS_PATH, exist_ok=True)
-            print(f"Created assets directory: {settings.ASSETS_PATH}")
-        
-        # Check vector database directory
-        if not os.path.exists(settings.VECTOR_DB_PATH):
-            os.makedirs(settings.VECTOR_DB_PATH, exist_ok=True)
-            print(f"Created vector database directory: {settings.VECTOR_DB_PATH}")
-        
-        return True
-        
-    except Exception as e:
-        print(f"Environment validation failed: {e}")
-        return False

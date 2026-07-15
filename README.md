@@ -1,6 +1,11 @@
 # Indian Law AI Portal
 
-An **AI-powered legal query assistant** for Indian laws — a *local Perplexity*: every answer is grounded **exclusively** in **25 official government law books** (the Constitution and the criminal/civil/personal/commercial/digital/labour codes) with inline `[n]` citations that resolve to the real document, page, and legal section. A two-stage router classifies each question's legal area first, then retrieves within that area's statutes. If the documents can't answer, it says so instead of guessing. No internet sources at runtime, by design.
+An **AI-powered legal query assistant** for Indian laws — a *local Perplexity*: every answer is grounded **exclusively** in **25 official government law books** (the Constitution and the criminal/civil/personal/commercial/digital/labour codes) with inline `[n]` citations that resolve to the real document, page, and legal section. The corpus is extracted from the authorized official government sources below, which are treated as fully trusted sources for this project:
+
+- https://www.indiacode.nic.in/
+- https://www.legislative.gov.in/
+
+A two-stage router classifies each question's legal area first, then retrieves within that area's statutes. If the documents can't answer, it says so instead of guessing. No internet sources at runtime, by design.
 
 ![Indian Law AI Portal demo](assets/Laws_portal.gif)
 
@@ -107,6 +112,48 @@ cd frontend && npm install && npm start    # in another terminal
 
 ---
 
+## Deploy
+
+The portal ships as **one container**: FastAPI serves both the API and the built React app (same origin, so no CORS to configure). The public statutes and the prebuilt FAISS index are baked into the image and the models are pre-downloaded, so it answers immediately on first boot.
+
+```bash
+docker build -t indian-law-ai .
+docker run -p 8000:8000 -e GROQ_API_KEY=gsk_your_key indian-law-ai
+# open http://localhost:8000
+```
+
+Any Docker host works (Render, Railway, Fly.io, Hugging Face Spaces, a VPS). The platform's injected `$PORT` is honoured automatically.
+
+### Deployment checklist (security)
+
+The image already sets `DEBUG_MODE=false`, which is the master switch that hardens the app. On a deploy it:
+- **disables `/docs` + `/redoc`** (no public API map),
+- **hides exception details** from error responses (full trace stays in the server log),
+- **locks down every sensitive `/admin` endpoint** (`documents/process`, `database/clear`, `database/save`, `system/reinitialize`, `statistics`) — they are **disabled entirely unless** you set `ADMIN_API_KEY`, in which case they require the `X-Admin-Key` header.
+
+Set these at deploy time (as platform env vars / secrets — never commit them):
+
+| Variable | Required | Purpose |
+|---|---|---|
+| `GROQ_API_KEY` | **yes** | LLM key (keep secret) |
+| `DEBUG_MODE` | already `false` in image | keep `false` in production |
+| `DAILY_QUERY_LIMIT` | no (default `25`) | global calls/day cap that protects your budget |
+| `ADMIN_API_KEY` | no | set only if you want remote admin; otherwise admin stays off |
+| `ALLOWED_ORIGINS` | only if frontend is on a **different** domain | comma-separated origins (single-service deploys don't need it) |
+
+> **Rate limit note:** the daily counter is in-memory, so run a **single worker** (the image does). It resets on restart; for a hard multi-instance guarantee, move it to Redis/SQLite.
+
+### Running without Docker
+
+Build the frontend once (`cd frontend && npm run build`) so FastAPI serves it, then start the backend with `DEBUG_MODE=false`:
+
+```bash
+cd frontend && CI=false npm run build && cd ..
+DEBUG_MODE=false GROQ_API_KEY=gsk_your_key python backend/main.py
+```
+
+---
+
 ## Adding documents
 
 Drop **new** PDFs into `assets/`. They get auto-ingested on next backend start, or on demand:
@@ -129,13 +176,16 @@ Already-ingested documents are **skipped** (reported in the `skipped` field) —
 | `POST` | `/api/v1/query/stream` | Same, streamed over SSE: `sources` event first, then `token` deltas, then `done` with validated citations |
 | `POST` | `/api/v1/query/advanced` | Query with filters, custom fusion count, reasoning trace |
 | `GET` | `/api/v1/agents` | List available agents |
+| `GET` | `/api/v1/usage` | Current global daily quota (`limit`, `used`, `remaining`, `reset_at`) |
 | `POST` | `/api/v1/validate` | Validate a query without processing it |
-| `POST` | `/api/v1/admin/documents/process` | Ingest new PDFs (skips already-ingested; 409 on `force_reprocess`) |
-| `GET` | `/api/v1/admin/documents/list` | List PDFs in `assets/` |
-| `GET` | `/api/v1/admin/statistics` | Vector DB stats, model info, configuration |
-| `POST` | `/api/v1/admin/database/save` | Persist the vector DB to disk |
-| `POST` | `/api/v1/admin/database/clear` | Clear the in-memory vector DB (`?confirm=true`) |
-| `POST` | `/api/v1/admin/system/reinitialize` | Re-run full AI service initialization |
+| `POST` | `/api/v1/admin/documents/process` | 🔒 Ingest new PDFs (skips already-ingested; 409 on `force_reprocess`) |
+| `GET` | `/api/v1/admin/documents/list` | List PDFs in `assets/` (filenames only) |
+| `GET` | `/api/v1/admin/statistics` | 🔒 Vector DB stats, model info, configuration |
+| `POST` | `/api/v1/admin/database/save` | 🔒 Persist the vector DB to disk |
+| `POST` | `/api/v1/admin/database/clear` | 🔒 Clear the in-memory vector DB (`?confirm=true`) |
+| `POST` | `/api/v1/admin/system/reinitialize` | 🔒 Re-run full AI service initialization |
+
+> 🔒 = protected. On a deploy (`DEBUG_MODE=false`) these are disabled unless `ADMIN_API_KEY` is set, then they require the `X-Admin-Key` header.
 | `GET` | `/health/` | System health (incl. `llm_status`) |
 | `GET` | `/health/ready` / `/health/live` / `/health/ping` | Probes |
 
@@ -214,8 +264,12 @@ A bash regression script that exercises every endpoint (health, stats, validate,
 | `CITED_SOURCES_K` | `8` | Sources numbered `[1]..[K]` into the prompt and returned |
 | `CHUNK_SIZE` | `500` | Words per chunk window |
 | `CHUNK_OVERLAP` | `50` | Word overlap between chunks |
-| `API_PORT` | `8000` | Backend port |
-| `DEBUG_MODE` | `true` | Uvicorn hot reload |
+| `API_PORT` | `8000` | Backend port (overridden by `$PORT` when set) |
+| `DEBUG_MODE` | `true` | **Deployment master switch.** `false` = no hot reload, no `/docs`, no error-detail leakage, admin locked down |
+| `RATE_LIMIT_ENABLED` | `true` | Global daily call cap on/off |
+| `DAILY_QUERY_LIMIT` | `25` | Total answers/day across all visitors (protects the LLM budget); `0` blocks all |
+| `ADMIN_API_KEY` | – | Guards `/admin`: required as `X-Admin-Key` on deploys. Unset + `DEBUG_MODE=false` = admin disabled |
+| `ALLOWED_ORIGINS` | `localhost:3000` | Comma-separated CORS origins (only needed if the frontend is on a different domain) |
 
 ---
 

@@ -7,19 +7,32 @@ Handles legal query processing endpoints.
 import json
 import time
 from typing import Any, Dict
-from fastapi import APIRouter, HTTPException, Request, Depends
+from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from loguru import logger
 
 from ..models.schemas import QueryRequest, QueryResponse, AdvancedQueryRequest
 from ..core.ai_service import AIService
-from ..dependencies import get_ai_service
+from ..core.config import get_settings
+from ..core.rate_limiter import get_rate_limiter
+from ..dependencies import get_ai_service, enforce_daily_limit, safe_error_detail
 
 
 router = APIRouter()
 
 
-@router.post("/query", response_model=QueryResponse)
+@router.get("/usage")
+async def usage_status() -> Dict[str, Any]:
+    """Current global daily quota — powers the frontend's live 'N left today'
+    counter and the rate-limit modal. Does not consume quota."""
+    settings = get_settings()
+    if not settings.RATE_LIMIT_ENABLED:
+        return {"enabled": False}
+    status = await get_rate_limiter().status()
+    return {"enabled": True, **status}
+
+
+@router.post("/query", response_model=QueryResponse, dependencies=[Depends(enforce_daily_limit)])
 async def process_legal_query(
     query_request: QueryRequest,
     ai_service: AIService = Depends(get_ai_service)
@@ -64,11 +77,11 @@ async def process_legal_query(
         logger.error(f"Error processing query: {e}")
         raise HTTPException(
             status_code=500,
-            detail=f"Error processing legal query: {str(e)}"
+            detail=safe_error_detail("Error processing legal query", e)
         )
 
 
-@router.post("/query/stream")
+@router.post("/query/stream", dependencies=[Depends(enforce_daily_limit)])
 async def stream_legal_query(
     query_request: QueryRequest,
     ai_service: AIService = Depends(get_ai_service)
@@ -92,7 +105,8 @@ async def stream_legal_query(
                 yield f"event: {event}\ndata: {json.dumps(data, default=str)}\n\n"
         except Exception as e:
             logger.error(f"Error streaming query: {e}")
-            yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
+            msg = safe_error_detail("Error processing legal query", e)
+            yield f"event: error\ndata: {json.dumps({'error': msg})}\n\n"
 
     return StreamingResponse(
         event_stream(),
@@ -103,7 +117,7 @@ async def stream_legal_query(
     )
 
 
-@router.post("/query/advanced", response_model=QueryResponse)
+@router.post("/query/advanced", response_model=QueryResponse, dependencies=[Depends(enforce_daily_limit)])
 async def process_advanced_query(
     query_request: AdvancedQueryRequest,
     ai_service: AIService = Depends(get_ai_service)
@@ -156,7 +170,7 @@ async def process_advanced_query(
         logger.error(f"Error processing advanced query: {e}")
         raise HTTPException(
             status_code=500,
-            detail=f"Error processing advanced legal query: {str(e)}"
+            detail=safe_error_detail("Error processing advanced legal query", e)
         )
 
 
@@ -190,7 +204,7 @@ async def list_available_agents(
         logger.error(f"Error listing agents: {e}")
         raise HTTPException(
             status_code=500,
-            detail=f"Error retrieving agent information: {str(e)}"
+            detail=safe_error_detail("Error retrieving agent information", e)
         )
 
 
@@ -248,5 +262,5 @@ async def validate_query(
         logger.error(f"Error validating query: {e}")
         raise HTTPException(
             status_code=500,
-            detail=f"Error validating query: {str(e)}"
+            detail=safe_error_detail("Error validating query", e)
         )

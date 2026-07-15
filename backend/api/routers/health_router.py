@@ -11,6 +11,9 @@ from ..models.schemas import SystemHealth
 router = APIRouter()
 
 
+# Respond at BOTH /health and /health/ (no reliance on the trailing-slash
+# redirect, which the SPA static mount at "/" would otherwise swallow).
+@router.get("", response_model=SystemHealth, include_in_schema=False)
 @router.get("/", response_model=SystemHealth)
 async def health_check(request: Request) -> SystemHealth:
     """

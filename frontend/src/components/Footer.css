@@ -8,3 +8,69 @@
   font-size: 0.8rem;
   line-height: 1.5;
 }
+
+/* Badge row — free / open source signalling */
+.footer-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.footer-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 11px;
+  border-radius: var(--pill);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: 0.74rem;
+  font-weight: 550;
+  letter-spacing: 0.01em;
+  text-decoration: none;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.footer-badge.free {
+  background: var(--accent-weak);
+  border-color: var(--accent-line);
+  color: var(--accent-hover);
+}
+.footer-badge.github { cursor: pointer; }
+.footer-badge.github:hover {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+/* Live daily quota */
+.footer-quota {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 14px !important;
+  font-size: 0.8rem;
+  color: var(--text-2);
+}
+.footer-quota strong { color: var(--text); font-weight: 650; }
+.quota-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--pos);
+  box-shadow: 0 0 0 3px var(--pos-weak);
+}
+
+.footer-note {
+  max-width: 52ch;
+  margin: 0 auto !important;
+}
+
+.footer-sources {
+  margin-top: 8px !important;
+}
+.footer-sources a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}

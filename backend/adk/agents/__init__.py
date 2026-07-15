@@ -1,15 +1,9 @@
 """Agents Package"""
 
-from .domain_agents import (
-    CriminalLawAgent,
-    CivilLawAgent,
-    ConstitutionalLawAgent,
-    GeneralLegalAgent
-)
+from .domain_agents import DomainAgent, build_domain_agents, DOMAINS
 
 __all__ = [
-    'CriminalLawAgent',
-    'CivilLawAgent', 
-    'ConstitutionalLawAgent',
-    'GeneralLegalAgent'
+    'DomainAgent',
+    'build_domain_agents',
+    'DOMAINS'
 ]

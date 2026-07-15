@@ -1,0 +1,23 @@
+# Keep the build context lean. NOTE: assets/*.pdf and vector_db/ are
+# intentionally NOT ignored here (they are gitignored, but we bake them into the
+# image so the corpus + prebuilt index ship with the container).
+
+.git
+.gitignore
+**/__pycache__
+**/*.pyc
+*.log
+logs/
+
+# The frontend is rebuilt inside the image (multi-stage) — don't ship host copies
+frontend/node_modules
+frontend/build
+
+# Never bake secrets into the image; provide env at runtime
+.env
+
+# Local dev / docs cruft
+CLAUDE.md
+test_runner.sh
+*.md
+!README.md

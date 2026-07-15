@@ -6,10 +6,22 @@ import ResponseDisplay from './components/ResponseDisplay';
 import QueryHistory from './components/QueryHistory';
 import DocumentManager from './components/DocumentManager';
 import Footer from './components/Footer';
+import RateLimitModal from './components/RateLimitModal';
 import './App.css';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || '';
 const MAX_HISTORY = 20;
+
+// Pull the structured rate-limit payload out of any error shape (SSE fetch,
+// axios, or the raw 429 body). Returns null when it isn't a limit error.
+function extractRateLimit(err) {
+  if (err?.rateLimit) return err.rateLimit;
+  if (err?.response?.status === 429) {
+    const d = err.response.data;
+    return d?.detail || d?.error || {};
+  }
+  return null;
+}
 
 // Backend errors carry string `detail`, but 422 validation errors carry an
 // ARRAY of objects — rendering that in JSX crashes React. Always normalize.
@@ -31,6 +43,8 @@ function App() {
   const [history, setHistory] = useState([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
+  const [usage, setUsage] = useState(null);       // { enabled, limit, remaining, reset_at }
+  const [limitInfo, setLimitInfo] = useState(null); // set -> rate-limit modal shown
   const bottomRef = React.useRef(null);
 
   useEffect(() => {
@@ -48,9 +62,20 @@ function App() {
     }
   }, []);
 
+  // Live view of the global daily quota (powers the footer counter).
+  const refreshUsage = useCallback(async () => {
+    try {
+      const res = await axios.get(`${API_BASE_URL}/api/v1/usage`);
+      setUsage(res.data);
+    } catch (err) {
+      /* usage is a nice-to-have; ignore fetch failures */
+    }
+  }, []);
+
   useEffect(() => {
     loadSystemStatus();
-  }, [loadSystemStatus]);
+    refreshUsage();
+  }, [loadSystemStatus, refreshUsage]);
 
   // While the backend is still initializing (model downloads/ingestion), the
   // first health fetch reports "initializing"/"unknown" — poll until healthy
@@ -72,6 +97,14 @@ function App() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(requestData),
     });
+    // Daily quota exhausted — surface the structured payload so the caller can
+    // show the rate-limit modal (and NOT fall back to the /query endpoint).
+    if (res.status === 429) {
+      const body = await res.json().catch(() => ({}));
+      const err = new Error('daily_limit');
+      err.rateLimit = body.detail || body.error || {};
+      throw err;
+    }
     if (!res.ok || !res.body) throw new Error(`Stream failed (${res.status})`);
 
     const reader = res.body.getReader();
@@ -134,6 +167,9 @@ function App() {
         try {
           data = await streamQuery(requestData, id);
         } catch (streamErr) {
+          // A 429 is definitive (quota spent), not a transient stream glitch —
+          // don't retry the /query endpoint, just propagate to the limit handler.
+          if (extractRateLimit(streamErr)) throw streamErr;
           console.warn('Streaming failed, using standard endpoint:', streamErr);
           patchTurn(id, { data: null, streaming: true });
           const result = await axios.post(`${API_BASE_URL}/api/v1/query`, requestData);
@@ -145,9 +181,18 @@ function App() {
       // Tag the recent entry with the answering agent (for the sublabel).
       setHistory((prev) => prev.map((h) => (h.turnId === id ? { ...h, agent: data.agent_type } : h)));
     } catch (err) {
-      patchTurn(id, { streaming: false, error: errorToString(err, 'An error occurred while processing your query') });
+      const limit = extractRateLimit(err);
+      if (limit) {
+        // Drop the unanswered turn and its Recent entry; the modal explains why.
+        setTurns((prev) => prev.filter((t) => t.id !== id));
+        setHistory((prev) => prev.filter((h) => h.turnId !== id));
+        setLimitInfo(limit);
+      } else {
+        patchTurn(id, { streaming: false, error: errorToString(err, 'An error occurred while processing your query') });
+      }
     } finally {
       setLoading(false);
+      refreshUsage();
     }
   };
 
@@ -190,7 +235,6 @@ function App() {
                 </p>
               </div>
               <QueryForm onSubmit={handleQuery} loading={loading} home />
-              <Footer />
             </>
           ) : (
             <>
@@ -223,8 +267,11 @@ function App() {
               </div>
             </>
           )}
+          <Footer usage={usage} />
         </main>
       </div>
+
+      {limitInfo && <RateLimitModal info={limitInfo} onClose={() => setLimitInfo(null)} />}
     </div>
   );
 }

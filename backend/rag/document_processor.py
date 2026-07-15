@@ -350,28 +350,6 @@ class DocumentProcessor:
         logger.info(f"Processed {pdf_path}: {len(chunks)} chunks created")
         return chunks
 
-    def process_directory(self, directory_path: str) -> Dict[str, List[Dict]]:
-        """Process all PDF files in a directory"""
-        results = {}
-        pdf_files = list(Path(directory_path).glob("*.pdf"))
-
-        if not pdf_files:
-            logger.warning(f"No PDF files found in {directory_path}")
-            return results
-
-        for pdf_file in pdf_files:
-            try:
-                chunks = self.process_document(str(pdf_file))
-                results[pdf_file.name] = chunks
-            except Exception as e:
-                logger.error(f"Error processing {pdf_file}: {e}")
-                results[pdf_file.name] = []
-
-        total_chunks = sum(len(chunks) for chunks in results.values())
-        logger.info(f"Processed {len(pdf_files)} PDF files, created {total_chunks} total chunks")
-
-        return results
-
 
 class TextPreprocessor:
     """Additional text preprocessing utilities for legal documents"""
@@ -400,40 +378,3 @@ class TextPreprocessor:
 
         # Deduplicate preserving first-occurrence order
         return list(dict.fromkeys(references))
-
-    @staticmethod
-    def identify_document_type(text: str) -> str:
-        """Identify the type of legal document based on content"""
-        text_lower = text.lower()
-
-        if any(term in text_lower for term in ['indian penal code', 'ipc', 'punishment', 'offense', 'bharatiya nyaya sanhita', 'bns', 'bharatiya nagarik suraksha', 'bnss']):
-            return "Criminal Law"
-        elif any(term in text_lower for term in ['civil procedure', 'cpc', 'suit', 'decree']):
-            return "Civil Law"
-        elif any(term in text_lower for term in ['constitution', 'fundamental rights', 'directive principles']):
-            return "Constitutional Law"
-        elif any(term in text_lower for term in ['income tax', 'gst', 'taxation']):
-            return "Tax Law"
-        else:
-            return "General Law"
-
-    @staticmethod
-    def extract_key_terms(text: str) -> List[str]:
-        """Extract important legal terms and concepts"""
-        # Common legal terms to identify
-        legal_terms = [
-            'jurisdiction', 'precedent', 'statute', 'regulation', 'ordinance',
-            'plaintiff', 'defendant', 'appellant', 'respondent', 'magistrate',
-            'tribunal', 'court', 'judge', 'justice', 'advocate', 'counsel',
-            'evidence', 'witness', 'testimony', 'affidavit', 'petition',
-            'writ', 'appeal', 'revision', 'review', 'bail', 'custody'
-        ]
-
-        found_terms = []
-        text_lower = text.lower()
-
-        for term in legal_terms:
-            if term in text_lower:
-                found_terms.append(term)
-
-        return found_terms

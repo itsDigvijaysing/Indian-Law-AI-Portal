@@ -96,24 +96,3 @@ Identify which law or code governs the question and explain the provisions exact
 def build_domain_agents(llm_client=None) -> List[DomainAgent]:
     """Instantiate one agent per domain (used by AIService._initialize_agents)."""
     return [DomainAgent(domain, kw, flavor, llm_client) for domain, (kw, flavor) in DOMAINS.items()]
-
-
-# Backwards-compatible named classes (some imports reference these by name)
-class CriminalLawAgent(DomainAgent):
-    def __init__(self, llm_client=None):
-        super().__init__("Criminal", *DOMAINS["Criminal"], llm_client=llm_client)
-
-
-class CivilLawAgent(DomainAgent):
-    def __init__(self, llm_client=None):
-        super().__init__("Civil", *DOMAINS["Civil"], llm_client=llm_client)
-
-
-class ConstitutionalLawAgent(DomainAgent):
-    def __init__(self, llm_client=None):
-        super().__init__("Constitutional", *DOMAINS["Constitutional"], llm_client=llm_client)
-
-
-class GeneralLegalAgent(DomainAgent):
-    def __init__(self, llm_client=None):
-        super().__init__("General Law", *DOMAINS["General Law"], llm_client=llm_client)

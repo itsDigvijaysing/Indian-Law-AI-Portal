@@ -82,6 +82,9 @@ app = FastAPI(
     version="1.0.0",
     docs_url="/docs" if _settings.DEBUG_MODE else None,
     redoc_url="/redoc" if _settings.DEBUG_MODE else None,
+    # Without this the raw schema stays served even when /docs is off, which
+    # still advertises every route (admin included) to anyone who asks.
+    openapi_url="/openapi.json" if _settings.DEBUG_MODE else None,
     lifespan=lifespan
 )
 

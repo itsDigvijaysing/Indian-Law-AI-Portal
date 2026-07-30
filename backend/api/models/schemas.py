@@ -65,6 +65,7 @@ class QueryResponse(BaseModel):
     reformulated_queries: Optional[List[str]] = Field(None, description="Query reformulations used in RAG Fusion")
     fusion_statistics: Optional[Dict[str, Any]] = Field(None, description="RAG Fusion process statistics")
     applied_filters: Optional[Dict[str, Any]] = Field(None, description="Filters applied to this query")
+    unsupported_references: Optional[List[str]] = Field(None, description="Provision numbers the answer asserts that no retrieved source contains")
     timestamp: datetime = Field(default_factory=datetime.now, description="Response timestamp")
     
     model_config = ConfigDict(

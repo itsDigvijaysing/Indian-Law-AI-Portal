@@ -8,21 +8,28 @@ function linkifyCitations(answer) {
   return (answer || '').replace(/\[(\d{1,2})\](?!\()/g, '[$1](#cite-$1)');
 }
 
+// Flashes `target` (scrolling it into view first) — shared by chip→card and
+// card→chip clicks. Scoped to the nearest ".turn" so it never jumps to a
+// same-numbered source/citation in a different question's history entry.
+function flashElement(fromNode, selector) {
+  const scope = fromNode.closest('.turn') || document;
+  const target = scope.querySelector(selector);
+  if (!target) return;
+  target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  target.classList.remove('flash');
+  void target.offsetWidth;
+  target.classList.add('flash');
+}
+
 function CitationAnchor({ href, children, node, ...props }) {
   if (href && href.startsWith('#cite-')) {
     const n = href.slice('#cite-'.length);
     const onClick = (e) => {
       e.preventDefault();
-      const card = document.getElementById(`source-card-${n}`);
-      if (card) {
-        card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        card.classList.remove('flash');
-        void card.offsetWidth;
-        card.classList.add('flash');
-      }
+      flashElement(e.currentTarget, `#source-card-${n}`);
     };
     return (
-      <sup className="citation-chip" onClick={onClick} role="link" tabIndex={0}
+      <sup id={`answer-cite-${n}`} className="citation-chip" onClick={onClick} role="link" tabIndex={0}
            onKeyDown={(e) => e.key === 'Enter' && onClick(e)}>
         {n}
       </sup>
@@ -42,9 +49,15 @@ function SourceCard({ source, streaming }) {
     ? (source.page_start === source.page_end ? `p. ${source.page_start}` : `pp. ${source.page_start}-${source.page_end}`)
     : null;
   const stateClass = source.cited ? 'cited' : (streaming ? '' : 'uncited');
+  // Only cited sources have a matching [n] chip in the answer text to jump back to.
+  const onClick = source.cited
+    ? (e) => flashElement(e.currentTarget, `#answer-cite-${source.id}`)
+    : undefined;
   return (
     <div id={source.id != null ? `source-card-${source.id}` : undefined}
-         className={`source-card ${stateClass}`}>
+         className={`source-card ${stateClass}`}
+         onClick={onClick} role={onClick ? 'button' : undefined} tabIndex={onClick ? 0 : undefined}
+         onKeyDown={onClick ? (e) => e.key === 'Enter' && onClick(e) : undefined}>
       <div className="source-top">
         {source.id != null && <span className="source-num">{source.id}</span>}
         <span className="source-title">{source.document_title || formatDocName(source.document)}</span>

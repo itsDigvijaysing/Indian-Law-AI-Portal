@@ -357,6 +357,43 @@ class AIService:
     # Detects the grounded-refusal sentence the shared prompt mandates
     _REFUSAL_MARKER = "do not contain sufficient information"
 
+    # A provision number asserted in prose ("Section 66A", "Article 21", "Rule 14")
+    _PROVISION_RE = re.compile(
+        r'\b(?:Sections?|Articles?|Rules?)\s+(\d+[A-Z]{0,2})\b', re.IGNORECASE
+    )
+
+    @classmethod
+    def _supported_provisions(cls, sources: List[Dict]) -> set:
+        """Provision numbers that genuinely occur in the retrieved sources.
+
+        Collected from each source's own label, its legal_sections metadata, and
+        any provision named inside its text, including bare statute headings
+        ("303. Theft.—"), which is how India Code prints the provision itself.
+        """
+        supported = set()
+        for source in sources:
+            blob = f"{source.get('section') or ''}\n{source.get('text') or ''}"
+            for ref in source.get('legal_sections') or []:
+                blob += f"\n{ref}"
+            for match in cls._PROVISION_RE.finditer(blob):
+                supported.add(match.group(1).upper())
+            for match in re.finditer(r'(?:^|\s)(\d+[A-Z]{0,2})\.\s*[A-Z(]', blob):
+                supported.add(match.group(1).upper())
+        return supported
+
+    @classmethod
+    def _unsupported_provisions(cls, answer: str, sources: List[Dict]) -> List[str]:
+        """Provision numbers the answer asserts that no retrieved source contains.
+
+        The [n] validator only proves a marker points at a real source, not that
+        the provision named beside it exists. Models recall famous section
+        numbers from training (IT Act 66A, struck down in 2015 and absent from
+        this corpus) and attach them to a neighbouring source's marker, which
+        reads as a citation but is a fabrication.
+        """
+        claimed = {m.group(1).upper() for m in cls._PROVISION_RE.finditer(answer)}
+        return sorted(claimed - cls._supported_provisions(sources))
+
     def _number_sources(self, retrieved_docs: List[Dict]) -> List[Dict]:
         """Top-K retrieved docs become the numbered citation set [1]..[K]."""
         top = retrieved_docs[:self.settings.CITED_SOURCES_K]
@@ -467,6 +504,19 @@ class AIService:
             cited_sources = [s for s in sources if s['cited']]
             mean_similarity = sum(s.get('similarity_score', 0) for s in cited_sources) / len(cited_sources)
             confidence = min(0.95, 0.35 + 0.07 * len(cited_ids) + 0.2 * mean_similarity)
+
+        # An answer naming a provision no source contains is not grounded, however
+        # well its [n] markers validate. Surface it and cap the score so a
+        # fabricated section number can never be presented with confidence.
+        unsupported = self._unsupported_provisions(answer, sources)
+        if unsupported:
+            logger.warning(
+                f"Unsupported provision(s) asserted, not in retrieved sources: "
+                f"{', '.join(unsupported)}"
+            )
+            confidence = min(confidence, 0.3)
+        response_dict['unsupported_references'] = unsupported
+
         response_dict['confidence_score'] = round(confidence, 3)
 
     @staticmethod

@@ -217,18 +217,37 @@ CONCEPT_SECTIONS = {
         ("Bharatiya_Nagarik_Suraksha_Sanhita_2023", "Section 173"),
         ("Code_of_Criminal_Procedure_1973", "Section 154"),
     ],
+    "fir": [
+        ("Bharatiya_Nagarik_Suraksha_Sanhita_2023", "Section 173"),
+        ("Code_of_Criminal_Procedure_1973", "Section 154"),
+    ],
     "coparcenary": [("THE HINDU SUCCESSION ACT, 1956", "Section 6")],
     "specific performance": [("THE SPECIFIC RELIEF ACT, 1963", "Section 10")],
     "mutual consent divorce": [("The Hindu Marriage Act, 1955", "Section 13B")],
+    "theft": [
+        ("Bharatiya_Nyaya_Sanhita_2023", "Section 303"),
+        ("Indian_Penal_Code_1860", "Section 379"),
+    ],
+    "oral agreement": [("THE INDIAN CONTRACT ACT, 1872", "Section 10")],
+    "verbal agreement": [("THE INDIAN CONTRACT ACT, 1872", "Section 10")],
+    "oral contract": [("THE INDIAN CONTRACT ACT, 1872", "Section 10")],
+    "verbal contract": [("THE INDIAN CONTRACT ACT, 1872", "Section 10")],
+}
+
+# Concepts are matched on word boundaries, not as substrings: "fir" must not fire
+# on "first"/"confirm"/"fire", and "theft" should still match "thefts".
+_CONCEPT_PATTERNS = {
+    concept: re.compile(rf"\b{re.escape(concept)}s?\b", re.IGNORECASE)
+    for concept in CONCEPT_SECTIONS
 }
 
 
 def concept_sections(query: str):
     """(document_stem, section) pairs for any known lay concept named in the query."""
-    q = (query or "").lower()
+    q = query or ""
     hits = []
     for concept, refs in CONCEPT_SECTIONS.items():
-        if concept in q:
+        if _CONCEPT_PATTERNS[concept].search(q):
             hits.extend(refs)
     return hits
 

@@ -22,7 +22,7 @@ A two-stage router classifies each question's legal area first, then retrieves w
 - **SSE streaming** — token-by-token answers with the citation table sent first
 - **10 domain agents** — Criminal, Constitutional, Civil, Family, Commercial, Property, Digital, Labour, Evidence, General — config-driven, each supplying domain flavor to one shared grounded prompt
 - **Honest confidence** — citation-driven scoring (refusals 0.15, uncited 0.35, cited answers scale up to 0.95)
-- **Two LLM providers** — Groq (Llama 3.3 70B, recommended) or Google Gemini, switchable via `LLM_PROVIDER`
+- **Two LLM providers** — Groq (`openai/gpt-oss-20b`, a cheap reasoning model, recommended) or Google Gemini, switchable via `LLM_PROVIDER`
 - **FastAPI** backend with auto-generated docs at `/docs`, **React 18** frontend with clickable citation chips
 
 ---
@@ -34,7 +34,7 @@ flowchart LR
     Q[User Query] --> CLS[Query classifier<br/>→ legal category]
     CLS --> SCOPE[Preferred docs<br/>category + linked statutes]
     Q --> RF[RAG Fusion<br/>3 reformulations]
-    RF --> VDB[(FAISS Vector DB<br/>9,487 chunks · 25 docs)]
+    RF --> VDB[(FAISS Vector DB<br/>~9.5K chunks · 25 docs)]
     Q --> BM[BM25 + label lookup]
     BM --> RRF[RRF fusion + category boost<br/>+ CrossEncoder rerank]
     VDB --> RRF
@@ -71,7 +71,7 @@ Edit `.env`:
 ```env
 LLM_PROVIDER=groq                      # "groq" or "gemini"
 GROQ_API_KEY=your_groq_api_key_here
-GROQ_MODEL=llama-3.3-70b-versatile
+GROQ_MODEL=openai/gpt-oss-20b          # cheap reasoning model; avoid 70B/120B — costly, no accuracy gain here
 
 # (only needed if LLM_PROVIDER=gemini)
 GOOGLE_API_KEY=your_google_api_key_here
@@ -211,7 +211,7 @@ curl -s http://localhost:8000/api/v1/query \
      -d '{"query":"What is the punishment for theft under IPC?"}' | jq
 ```
 
-Real response (Groq Llama 3.3 70B, retrieved from the actual ingested PDFs; trimmed):
+Real response (Groq `openai/gpt-oss-20b`, retrieved from the actual ingested PDFs; trimmed):
 
 ```json
 {
@@ -252,7 +252,7 @@ A bash regression script that exercises every endpoint (health, stats, validate,
 |---|---|---|
 | `LLM_PROVIDER` | `gemini` | `groq` or `gemini` (`.env.example` ships with `groq`) |
 | `GROQ_API_KEY` | – | Required when `LLM_PROVIDER=groq` |
-| `GROQ_MODEL` | `llama-3.3-70b-versatile` | Groq model ID |
+| `GROQ_MODEL` | `llama-3.3-70b-versatile` | Groq model ID — code default; **override to `openai/gpt-oss-20b`** (`.env.example` + the Docker image already do), a cheap reasoning model that beats 70B on legal accuracy per rupee |
 | `GOOGLE_API_KEY` | – | Required when `LLM_PROVIDER=gemini` |
 | `LLM_MODEL` | `gemini-2.0-flash` | Gemini model |
 | `EMBEDDING_MODEL` | `gemini-embedding-001` | Code default is the Google model — **always override to a local one** (`.env.example` sets `BAAI/bge-small-en-v1.5`); the Google path rate-limits during ingestion on the free tier |

@@ -74,6 +74,15 @@ class DocumentProcessor:
         # Fix common OCR errors in non-numeric contexts
         text = re.sub(r'(?<![0-9])\|(?![0-9])', 'I', text)  # '|' → 'I' only outside numbers
 
+        # Strip India Code amendment-footnote markers: substituted text is printed
+        # as `N[new text]` and omitted text as `N* * * * *`, where N is the footnote
+        # number. The bare digit reads as part of the sentence and corrupts the
+        # numbers the answer depends on (NI Act s.138 `for 4[a term ... two years']`
+        # was being answered as "four years"). Drop the marker, keep the brackets so
+        # the text still reads as amended.
+        text = re.sub(r'(?<=\s)\d{1,2}(?=\[)', '', text)
+        text = re.sub(r'(?<=\s)\d{1,2}(?=\*\s*\*)', '', text)
+
         # Normalize section references
         text = re.sub(r'Section\s+(\d+)', r'Section \1', text, flags=re.IGNORECASE)
         text = re.sub(r'Article\s+(\d+)', r'Article \1', text, flags=re.IGNORECASE)
@@ -107,8 +116,49 @@ class DocumentProcessor:
             refs = TextPreprocessor.extract_legal_references(chunk['text'])
             chunk['legal_sections'] = refs[:8]
 
+        self._flag_struck_down(chunks, text, document_name)
+
         logger.info(f"Created {len(chunks)} chunks from {document_name}")
         return chunks
+
+    # A provision voided by a court is still printed in the statute, with the
+    # notice in a footnote that lands in a DIFFERENT chunk. Retrieval then serves
+    # the live-looking provision text alone (IT Act 66A, struck down in Shreya
+    # Singhal 2015) and the answer presents dead law as current.
+    _STRUCK_DOWN_RE = re.compile(
+        r'Sections?\s+(\d+[A-Z]{0,2})\s+(?:of[^.]{0,60}\s+)?'
+        r'(?:has|have|was|were)\s+been?\s*(?:struck down|declared unconstitutional)[^.]*\.',
+        re.IGNORECASE
+    )
+
+    @classmethod
+    def _flag_struck_down(cls, chunks: List[Dict], text: str, document_name: str) -> None:
+        """Carry a court's strike-down notice into the chunk holding that provision.
+
+        Deliberately narrow: only judicial invalidation, never the routine
+        "omitted"/"repealed" wording of amendment bookkeeping, which marks
+        superseded text rather than a provision that is no longer law.
+        """
+        notices = {}
+        for match in cls._STRUCK_DOWN_RE.finditer(text):
+            notices.setdefault(match.group(1).upper(), ' '.join(match.group(0).split()))
+        if not notices:
+            return
+
+        flagged = 0
+        for number, notice in notices.items():
+            heading = re.compile(rf'(?:^|\s|\[){re.escape(number)}\.\s*[A-Z]')
+            for chunk in chunks:
+                if notice in chunk['text'] or not heading.search(chunk['text']):
+                    continue
+                chunk['text'] = f"{chunk['text']}\n\nIMPORTANT: {notice}"
+                chunk['struck_down'] = number
+                flagged += 1
+        if flagged:
+            logger.info(
+                f"{document_name}: flagged {flagged} chunk(s) carrying struck-down "
+                f"provision(s) {', '.join(sorted(notices))}"
+            )
 
     @staticmethod
     def _page_for_offset(page_starts: List[int], page_numbers: List[int], char_pos: int) -> int:
@@ -179,6 +229,34 @@ class DocumentProcessor:
     # classification tables, forms) inherits that last section's label.
     _SCHEDULE_RE = re.compile(r'THE\s+([A-Z]+)\s+SCHEDULE')
 
+    # Real statute headings advance in small steps: across the corpus 4,603 of
+    # 5,595 forward steps are +1 and none legitimately exceed +12. Anything past
+    # this is a misparse (a stray body number read as a heading).
+    _MAX_HEADING_JUMP = 20
+
+    @classmethod
+    def _continues_sequence(cls, matches: List, start: int, num: int) -> bool:
+        """Whether a later heading picks up where a big forward jump landed.
+
+        Distinguishes a real gap (the pattern missed some headings, so the next
+        one still follows on: 100 → 126 → 127) from an isolated spike (a stray
+        number in body text: 9 → 527 → 10), which must not be allowed to poison
+        the monotonic state and reject every genuine heading after it.
+        """
+        seen = 0
+        for match in matches[start + 1:]:
+            if cls._FOOTNOTE_START.match(match.group(0)):
+                continue
+            following = cls._heading_number(match.group(0))
+            if following == -1:
+                continue
+            if num < following <= num + cls._MAX_HEADING_JUMP:
+                return True
+            seen += 1
+            if seen >= 5:
+                break
+        return False
+
     @classmethod
     def _monotonic_headings(cls, matches: List) -> List:
         """Keep matches that behave like real statute headings: numbers go upward.
@@ -187,11 +265,11 @@ class DocumentProcessor:
         body-text cross-reference or footnote, not a heading — except number 1,
         which is allowed to reset the sequence (table-of-contents → body
         transition, schedules, appendices). Amendment-footnote lookalikes are
-        dropped outright.
+        dropped outright, as are unconfirmed forward spikes.
         """
         kept = []
         last_num = -1
-        for match in matches:
+        for index, match in enumerate(matches):
             heading = match.group(0)
             if cls._FOOTNOTE_START.match(heading):
                 continue
@@ -199,6 +277,9 @@ class DocumentProcessor:
             if num > 999:  # years ("2023. The …") — no Indian code has 4-digit sections
                 continue
             if num == -1 or num > last_num or num == 1:
+                if (last_num != -1 and num > last_num + cls._MAX_HEADING_JUMP
+                        and not cls._continues_sequence(matches, index, num)):
+                    continue
                 kept.append(match)
                 if num != -1:
                     last_num = num

@@ -106,10 +106,20 @@
   line-height: 1;
   cursor: pointer;
   vertical-align: super;
-  transition: background 0.12s, color 0.12s;
+  transition: background 0.12s, color 0.12s, transform 0.12s, box-shadow 0.12s;
   user-select: none;
 }
-.citation-chip:hover { background: var(--accent); color: #fff; }
+.citation-chip:hover {
+  background: var(--accent);
+  color: #fff;
+  transform: scale(1.25);
+  box-shadow: 0 0 0 3px var(--accent-weak);
+}
+.citation-chip.flash { animation: chipflash 1.1s ease-out; }
+@keyframes chipflash {
+  0% { background: var(--accent); color: #fff; transform: scale(1.5); box-shadow: 0 0 0 4px var(--accent-weak); }
+  100% { background: var(--accent-weak); color: var(--accent-hover); transform: scale(1); box-shadow: 0 0 0 0 transparent; }
+}
 
 /* ---- Sources (right column, stacked) ---- */
 .sources-title {
@@ -137,10 +147,12 @@
 }
 .source-card:hover {
   border-color: var(--border-strong);
+  background: var(--surface-2);
   box-shadow: var(--shadow-sm);
   transform: translateY(-1px);
 }
-.source-card.cited { border-color: var(--accent-line); }
+.source-card.cited { border-color: var(--accent-line); cursor: pointer; }
+.source-card.cited:hover { border-color: var(--accent); background: var(--accent-weak); }
 .source-card.uncited { opacity: 0.72; }
 .source-card.flash { animation: cardflash 1.3s ease-out; }
 @keyframes cardflash {

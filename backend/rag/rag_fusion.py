@@ -28,6 +28,7 @@ A web-search leg plugs in later by appending one more callable to
 """
 
 import re
+from collections import OrderedDict
 from typing import List, Dict, Any
 from loguru import logger
 
@@ -40,11 +41,15 @@ def _norm_doc(stem: str) -> str:
 class QueryReformulator:
     """Generates multiple reformulations of user queries using RAG Fusion technique"""
     
+    _CACHE_MAX = 256
+
     def __init__(self, llm_client=None, num_reformulations: int = 3):
         self.llm_client = llm_client
         self.num_reformulations = num_reformulations
+        # (query, count) -> reformulation list. See reformulate_query.
+        self._cache: "OrderedDict[tuple, List[str]]" = OrderedDict()
         logger.info(f"QueryReformulator initialized with {num_reformulations} reformulations")
-    
+
     def reformulate_query(self, original_query: str, num_reformulations: int = None) -> List[str]:
         """
         Generate multiple reformulations of the original query.
@@ -52,14 +57,36 @@ class QueryReformulator:
 
         num_reformulations overrides the instance default per call — callers
         must NOT mutate self.num_reformulations (shared across requests).
+
+        MEMOIZED by (original_query, count). _llm_reformulate below is a live
+        LLM call and is NOT deterministic, so without this the same question
+        could get a different reformulation set on every request, retrieve
+        different chunks, and produce a materially different answer. That was
+        the real cause of the reported "?" inconsistency: punctuation merely
+        changed the text reaching this uncached, non-deterministic call.
+
+        Two deliberate properties:
+          * a copy is returned, so a caller mutating its list cannot corrupt
+            the cache for every later request;
+          * a result is cached ONLY when the LLM leg actually produced
+            something (or there is no LLM at all). Caching a rate-limited or
+            network-failed run would permanently pin that query to degraded
+            retrieval instead of retrying on the next request.
         """
         count = num_reformulations if num_reformulations is not None else self.num_reformulations
+        key = (original_query, count)
+        cached = self._cache.get(key)
+        if cached is not None:
+            self._cache.move_to_end(key)
+            return list(cached)
         try:
             reformulations = [original_query]  # Always include original
 
+            llm_ok = True
             if self.llm_client:
                 # Use LLM for intelligent reformulation
                 llm_reformulations = self._llm_reformulate(original_query, count)
+                llm_ok = bool(llm_reformulations)
                 reformulations.extend(llm_reformulations)
 
             # Add rule-based reformulations as backup
@@ -77,10 +104,20 @@ class QueryReformulator:
 
             # Ensure we have the desired number of reformulations
             final_reformulations = unique_reformulations[:count + 1]
-            
+
+            if llm_ok:
+                self._cache[key] = list(final_reformulations)
+                while len(self._cache) > self._CACHE_MAX:
+                    self._cache.popitem(last=False)
+            else:
+                logger.warning(
+                    "LLM reformulation returned nothing; serving degraded "
+                    "reformulations WITHOUT caching so the next request retries"
+                )
+
             logger.info(f"Generated {len(final_reformulations)} query reformulations")
             return final_reformulations
-            
+
         except Exception as e:
             logger.error(f"Error in query reformulation: {e}")
             return [original_query]  # Return original if reformulation fails

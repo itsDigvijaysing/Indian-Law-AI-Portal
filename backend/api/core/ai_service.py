@@ -43,7 +43,13 @@ class GroqLLMClient:
         p = {
             "messages": None,  # filled by caller
             "model": self._model,
-            "temperature": 0.3,
+            # 0.0, not 0.3: the same question should give the same answer.
+            # NOTE this does NOT make generation reproducible — Groq's batched
+            # MoE serving still varies long answers run to run. `seed=42` was
+            # measured 2026-07-30 and made no difference (6/6 distinct answers),
+            # so it is deliberately not set. Retrieval IS deterministic; only
+            # the final wording/citation selection drifts.
+            "temperature": 0.0,
             "max_completion_tokens": 3000,  # room for reasoning + a full answer
             "stream": stream,
         }
@@ -474,6 +480,35 @@ class AIService:
             return match.group(0)
 
         answer = re.sub(r'\[(\d+)\]', _validate, answer)
+
+        # Bracket-only detection misses a model that names a source's exact
+        # section in prose without a marker (e.g. "Section 302 IPC provides...").
+        # That reads as "uncited" and craters confidence even though the answer
+        # is correctly grounded. Give each such source a second chance: if its
+        # section label is asserted verbatim and nothing already sits there,
+        # insert the missing [n] so it counts as cited and the frontend's
+        # chip-to-card jump still has a marker to find.
+        #
+        # The trailing lookahead is LOAD-BEARING: section labels are prefixes of
+        # one another ("Section 13" inside "Section 138"/"Section 13B"/"Section
+        # 13-A", "Section 6" inside "Section 60"). Matching without it spliced a
+        # marker INTO the number — "Section 138" rendered as "Section 13[1]8",
+        # showing the reader a wrong section and crediting the wrong source.
+        for source in sources:
+            if source['id'] in cited_ids:
+                continue
+            label = source.get('section', '')
+            if not label or label in ('Front matter', 'Full-Document'):
+                continue
+            match = re.search(rf'\b{re.escape(label)}(?![\w\-])', answer, re.IGNORECASE)
+            if not match:
+                continue
+            tail = answer[match.end():match.end() + 6]
+            if re.match(r'\s*\[\d+\]', tail):
+                continue  # a marker already sits here for some other source
+            answer = answer[:match.end()] + f'[{source["id"]}]' + answer[match.end():]
+            cited_ids.add(source['id'])
+
         response_dict['answer'] = answer
         for source in sources:
             source['cited'] = source['id'] in cited_ids
@@ -575,6 +610,16 @@ class AIService:
 
     def _is_meta_query(self, query: str) -> bool:
         return bool(self._META_RE.search((query or "").strip()))
+
+    @staticmethod
+    def _normalize_query(query: str) -> str:
+        """Collapse whitespace and drop trailing ?/!/. so 'X' and 'X?' reach the
+        classifier, reformulator and retriever as identical text. Without this,
+        a bare trailing '?' was enough to send the LLM-driven query reformulation
+        (rag_fusion.QueryReformulator) down a different path, changing which
+        chunks got retrieved and producing a materially different answer."""
+        q = re.sub(r'\s+', ' ', (query or '')).strip()
+        return re.sub(r'[?!.]+$', '', q).strip()
 
     def _capability_response(self) -> Dict[str, Any]:
         """Honest description of what the portal can do — not a grounded legal answer."""
@@ -678,6 +723,7 @@ class AIService:
         """
         if not self._initialized:
             raise RuntimeError("AI Service not initialized")
+        query = self._normalize_query(query)
 
         # Meta / capability question → honest description, not a grounded legal answer
         if self._is_meta_query(query):
@@ -794,6 +840,7 @@ class AIService:
         """
         if not self._initialized:
             raise RuntimeError("AI Service not initialized")
+        query = self._normalize_query(query)
 
         retrieved_count = 0
         sources: List[Dict] = []
@@ -868,6 +915,7 @@ class AIService:
         """
         if not self._initialized:
             raise RuntimeError("AI Service not initialized")
+        query = self._normalize_query(query)
 
         retrieved_docs: List[Dict] = []
         sources: List[Dict] = []

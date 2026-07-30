@@ -40,7 +40,7 @@ flowchart LR
     VDB --> RRF
     SCOPE --> RRF
     RRF --> AR[Domain agent<br/>by category]
-    AR --> LLM[Groq Llama 3.3 70B<br/>or Google Gemini<br/>grounded + era rule]
+    AR --> LLM[Groq gpt-oss-20b<br/>or Google Gemini<br/>grounded + era rule]
     LLM --> V[Citation validation<br/>+ confidence scoring]
     V --> R[Cited JSON / SSE stream]
 
@@ -275,7 +275,7 @@ A bash regression script that exercises every endpoint (health, stats, validate,
 
 ## Tech stack
 
-FastAPI · React 18 · FAISS · BM25 (rank_bm25) · Sentence Transformers (bge-small embeddings + cross-encoder reranker, all local) · Groq Llama 3.3 70B / Google Gemini · RAG Fusion · PyPDF2 · SSE
+FastAPI · React 18 · FAISS · BM25 (rank_bm25) · Sentence Transformers (bge-small embeddings + cross-encoder reranker, all local) · Groq gpt-oss-20b / Google Gemini · RAG Fusion · PyPDF2 · SSE
 
 ---
 

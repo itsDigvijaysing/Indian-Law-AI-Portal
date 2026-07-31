@@ -7,7 +7,8 @@ An **AI-powered legal query assistant** for Indian laws — a *local Perplexity*
 
 A two-stage router classifies each question's legal area first, then retrieves within that area's statutes. If the documents can't answer, it says so instead of guessing. No internet sources at runtime, by design.
 
-![Indian Law AI Portal demo](assets/Laws_portal.gif)
+![Indian Law AI Portal demo](assets/images/INDIAN_LAW.webp)
+- Demo Video: https://www.youtube.com/watch?v=KKpGBPhEnt8
 
 ---
 

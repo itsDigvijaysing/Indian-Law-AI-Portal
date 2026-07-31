@@ -1,6 +1,6 @@
 # Indian Law AI Portal
 
-An **AI-powered legal query assistant** for Indian laws — a *local Perplexity*: every answer is grounded **exclusively** in **25 official government law books** (the Constitution and the criminal/civil/personal/commercial/digital/labour codes) with inline `[n]` citations that resolve to the real document, page, and legal section. The corpus is extracted from the authorized official government sources below, which are treated as fully trusted sources for this project:
+An **AI-powered legal query assistant** for Indian laws  a *local Perplexity*: every answer is grounded **exclusively** in **25 official government law books** (the Constitution and the criminal/civil/personal/commercial/digital/labour codes) with inline `[n]` citations that resolve to the real document, page, and legal section. The corpus is extracted from the authorized official government sources below, which are treated as fully trusted sources for this project:
 
 - https://www.indiacode.nic.in/
 - https://www.legislative.gov.in/
@@ -14,16 +14,16 @@ A two-stage router classifies each question's legal area first, then retrieves w
 
 ## Features
 
-- **25-document corpus** across criminal, civil, personal, commercial, digital and labour law — every PDF classified by legal category and validity era in a metadata registry
-- **Two-stage category router** — a query classifier detects the legal area (e.g. cheque bounce → Commercial, divorce → Family), then retrieval is scoped to that area's statutes plus its linked procedural/limitation/constitutional docs (soft boost, never hard-exclude — cross-cutting queries keep full recall)
-- **Era / validity grounding** — the pre/post-1-July-2024 split (IPC/CrPC/Evidence Act → BNS/BNSS/BSA); criminal answers give both the current and legacy provision with the date each applies
-- **Grounded `[n]` citations** — answers cite numbered sources; each maps to a PDF, a real section label ("Section 302", "Order VII Rule 1"), a page range, and a category/era tag. Citations are validated server-side; invented ones are stripped
-- **Grounded refusal** — off-corpus questions get an explicit "the provided legal documents do not contain sufficient information" instead of hallucinated law
-- **Hybrid retrieval** — FAISS vector search (bge-small-en-v1.5, local) + BM25 keyword search + exact section-label lookup, fused with reciprocal-rank fusion, plus a cross-encoder reranker
-- **SSE streaming** — token-by-token answers with the citation table sent first
-- **10 domain agents** — Criminal, Constitutional, Civil, Family, Commercial, Property, Digital, Labour, Evidence, General — config-driven, each supplying domain flavor to one shared grounded prompt
-- **Honest confidence** — citation-driven scoring (refusals 0.15, uncited 0.35, cited answers scale up to 0.95)
-- **Two LLM providers** — Groq (`openai/gpt-oss-20b`, a cheap reasoning model, recommended) or Google Gemini, switchable via `LLM_PROVIDER`
+- **25-document corpus** across criminal, civil, personal, commercial, digital and labour law  every PDF classified by legal category and validity era in a metadata registry
+- **Two-stage category router**  a query classifier detects the legal area (e.g. cheque bounce → Commercial, divorce → Family), then retrieval is scoped to that area's statutes plus its linked procedural/limitation/constitutional docs (soft boost, never hard-exclude  cross-cutting queries keep full recall)
+- **Era / validity grounding**  the pre/post-1-July-2024 split (IPC/CrPC/Evidence Act → BNS/BNSS/BSA); criminal answers give both the current and legacy provision with the date each applies
+- **Grounded `[n]` citations**  answers cite numbered sources; each maps to a PDF, a real section label ("Section 302", "Order VII Rule 1"), a page range, and a category/era tag. Citations are validated server-side; invented ones are stripped
+- **Grounded refusal**  off-corpus questions get an explicit "the provided legal documents do not contain sufficient information" instead of hallucinated law
+- **Hybrid retrieval**  FAISS vector search (bge-small-en-v1.5, local) + BM25 keyword search + exact section-label lookup, fused with reciprocal-rank fusion, plus a cross-encoder reranker
+- **SSE streaming**  token-by-token answers with the citation table sent first
+- **10 domain agents**  Criminal, Constitutional, Civil, Family, Commercial, Property, Digital, Labour, Evidence, General  config-driven, each supplying domain flavor to one shared grounded prompt
+- **Honest confidence**  citation-driven scoring (refusals 0.15, uncited 0.35, cited answers scale up to 0.95)
+- **Two LLM providers**  Groq (`openai/gpt-oss-20b`, a cheap reasoning model, recommended) or Google Gemini, switchable via `LLM_PROVIDER`
 - **FastAPI** backend with auto-generated docs at `/docs`, **React 18** frontend with clickable citation chips
 
 ---
@@ -56,9 +56,9 @@ flowchart LR
 
 ### Prerequisites
 
-- Python 3.11 (recommended for ML wheels — works on 3.10–3.13; avoid 3.14 for now)
+- Python 3.11 (recommended for ML wheels  works on 3.10–3.13; avoid 3.14 for now)
 - Node.js 16+
-- A **Groq API key** (free, generous limits — [console.groq.com/keys](https://console.groq.com/keys)) **or** a **Google AI key** ([Gemini](https://makersuite.google.com/app/apikey); free tier is rate-limited hard)
+- A **Groq API key** (free, generous limits  [console.groq.com/keys](https://console.groq.com/keys)) **or** a **Google AI key** ([Gemini](https://makersuite.google.com/app/apikey); free tier is rate-limited hard)
 - Conda (recommended for the Python env)
 
 ### 1. Configure environment
@@ -72,7 +72,7 @@ Edit `.env`:
 ```env
 LLM_PROVIDER=groq                      # "groq" or "gemini"
 GROQ_API_KEY=your_groq_api_key_here
-GROQ_MODEL=openai/gpt-oss-20b          # cheap reasoning model; avoid 70B/120B — costly, no accuracy gain here
+GROQ_MODEL=openai/gpt-oss-20b          # cheap reasoning model; avoid 70B/120B  costly, no accuracy gain here
 
 # (only needed if LLM_PROVIDER=gemini)
 GOOGLE_API_KEY=your_google_api_key_here
@@ -93,10 +93,10 @@ pip install -r requirements.txt
 ### 3. Run
 
 ```bash
-# Option A — both backend + frontend
+# Option A  both backend + frontend
 ./start_dev.sh
 
-# Option B — manual
+# Option B  manual
 conda activate my_env
 python backend/main.py        # IMPORTANT: from project root, not from inside backend/
 
@@ -130,9 +130,9 @@ Any Docker host works (Render, Railway, Fly.io, Hugging Face Spaces, a VPS). The
 The image already sets `DEBUG_MODE=false`, which is the master switch that hardens the app. On a deploy it:
 - **disables `/docs` + `/redoc`** (no public API map),
 - **hides exception details** from error responses (full trace stays in the server log),
-- **locks down every sensitive `/admin` endpoint** (`documents/process`, `database/clear`, `database/save`, `system/reinitialize`, `statistics`) — they are **disabled entirely unless** you set `ADMIN_API_KEY`, in which case they require the `X-Admin-Key` header.
+- **locks down every sensitive `/admin` endpoint** (`documents/process`, `database/clear`, `database/save`, `system/reinitialize`, `statistics`)  they are **disabled entirely unless** you set `ADMIN_API_KEY`, in which case they require the `X-Admin-Key` header.
 
-Set these at deploy time (as platform env vars / secrets — never commit them):
+Set these at deploy time (as platform env vars / secrets  never commit them):
 
 | Variable | Required | Purpose |
 |---|---|---|
@@ -165,7 +165,7 @@ curl -X POST http://localhost:8000/api/v1/admin/documents/process \
      -d '{"file_paths": ["New_Act_2026.pdf"]}'
 ```
 
-Already-ingested documents are **skipped** (reported in the `skipped` field) — FAISS flat has no per-document delete, so re-processing in place would duplicate chunks. `force_reprocess: true` returns **409** with the honest fix: to rebuild, stop the backend, delete `vector_db/indian_law_db.index` and `vector_db/indian_law_db.metadata`, and restart.
+Already-ingested documents are **skipped** (reported in the `skipped` field)  FAISS flat has no per-document delete, so re-processing in place would duplicate chunks. `force_reprocess: true` returns **409** with the honest fix: to rebuild, stop the backend, delete `vector_db/indian_law_db.index` and `vector_db/indian_law_db.metadata`, and restart.
 
 ---
 
@@ -229,7 +229,7 @@ Real response (Groq `openai/gpt-oss-20b`, retrieved from the actual ingested PDF
     {"id": 1, "document_title": "Indian Penal Code, 1860", "section": "Section 379",
      "category": "Criminal", "era": "pre-2024", "page_start": 95, "page_end": 95,
      "similarity_score": 0.667, "cited": true,
-     "snippet": "379. Punishment for theft .—Whoever commits theft shall be punished..."},
+     "snippet": "379. Punishment for theft .Whoever commits theft shall be punished..."},
     {"id": 2, "document_title": "Indian Penal Code, 1860", "section": "Section 382",
      "category": "Criminal", "era": "pre-2024", "page_start": 95, "page_end": 96,
      "similarity_score": 0.658, "cited": false, "snippet": "..."}
@@ -237,9 +237,9 @@ Real response (Groq `openai/gpt-oss-20b`, retrieved from the actual ingested PDF
 }
 ```
 
-The `[n]` markers in `answer` index into `retrieval_sources` by `id` — that array is the citation table (`cited: true` marks sources the answer actually used; each carries `category` and `era` — `pre-2024` legacy / `post-2024` current / `current`). `confidence_score` is citation-driven: 0.15 for grounded refusals, 0.35 for uncited answers, up to 0.95 for well-cited ones. It never reaches 1.0. Meta questions ("what can you do?") return an honest capability summary with `agent_type: "Assistant"` and no fabricated citations.
+The `[n]` markers in `answer` index into `retrieval_sources` by `id`  that array is the citation table (`cited: true` marks sources the answer actually used; each carries `category` and `era`  `pre-2024` legacy / `post-2024` current / `current`). `confidence_score` is citation-driven: 0.15 for grounded refusals, 0.35 for uncited answers, up to 0.95 for well-cited ones. It never reaches 1.0. Meta questions ("what can you do?") return an honest capability summary with `agent_type: "Assistant"` and no fabricated citations.
 
-A bash regression script that exercises every endpoint (health, stats, validate, query, advanced query, edge cases, citations/grounding, category routing, streaming — 31 probes) ships with the repo:
+A bash regression script that exercises every endpoint (health, stats, validate, query, advanced query, edge cases, citations/grounding, category routing, streaming  31 probes) ships with the repo:
 
 ```bash
 ./test_runner.sh
@@ -253,10 +253,10 @@ A bash regression script that exercises every endpoint (health, stats, validate,
 |---|---|---|
 | `LLM_PROVIDER` | `gemini` | `groq` or `gemini` (`.env.example` ships with `groq`) |
 | `GROQ_API_KEY` | – | Required when `LLM_PROVIDER=groq` |
-| `GROQ_MODEL` | `llama-3.3-70b-versatile` | Groq model ID — code default; **override to `openai/gpt-oss-20b`** (`.env.example` + the Docker image already do), a cheap reasoning model that beats 70B on legal accuracy per rupee |
+| `GROQ_MODEL` | `llama-3.3-70b-versatile` | Groq model ID  code default; **override to `openai/gpt-oss-20b`** (`.env.example` + the Docker image already do), a cheap reasoning model that beats 70B on legal accuracy per rupee |
 | `GOOGLE_API_KEY` | – | Required when `LLM_PROVIDER=gemini` |
 | `LLM_MODEL` | `gemini-2.0-flash` | Gemini model |
-| `EMBEDDING_MODEL` | `gemini-embedding-001` | Code default is the Google model — **always override to a local one** (`.env.example` sets `BAAI/bge-small-en-v1.5`); the Google path rate-limits during ingestion on the free tier |
+| `EMBEDDING_MODEL` | `gemini-embedding-001` | Code default is the Google model  **always override to a local one** (`.env.example` sets `BAAI/bge-small-en-v1.5`); the Google path rate-limits during ingestion on the free tier |
 | `RAG_FUSION_QUERIES` | `3` | Query reformulation count |
 | `TOP_K_RETRIEVAL` | `10` | Top-K fused results |
 | `RERANK_ENABLED` | `true` | Cross-encoder rerank of the fused head |

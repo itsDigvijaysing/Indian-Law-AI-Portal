@@ -253,8 +253,22 @@ def concept_sections(query: str):
 
 
 def _norm(stem: str) -> str:
-    """Whitespace-insensitive key (handles trailing-space filenames)."""
+    """Whitespace-insensitive registry key (handles trailing-space filenames).
+
+    Deliberately CASE-SENSITIVE: registry keys are the real filename stems and
+    are matched as written. Do not fold this into norm_doc_key below.
+    """
     return re.sub(r"\s+", " ", (stem or "")).strip()
+
+
+def norm_doc_key(stem: str) -> str:
+    """Case-folded document stem, for comparing stems ACROSS sources.
+
+    Retrieval compares stems that arrive from chunk metadata and from router
+    scopes, where casing is not guaranteed, so this lowercases as well. Distinct
+    from _norm above, which must stay case-sensitive for registry lookups.
+    """
+    return re.sub(r"\s+", " ", (stem or "")).strip().lower()
 
 
 _BY_NORM = {_norm(k): v for k, v in DOCUMENTS.items()}

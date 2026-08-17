@@ -8,22 +8,17 @@ import os
 import re
 import pickle
 import numpy as np
-from typing import List, Dict, Tuple, Optional, Any
+from typing import List, Dict, Any
 import faiss
 from rank_bm25 import BM25Okapi
 from loguru import logger
 
 try:
-    from .document_registry import get_doc_meta
+    from .document_registry import get_doc_meta, norm_doc_key as _norm_doc
 except ImportError:
-    from document_registry import get_doc_meta
+    from document_registry import get_doc_meta, norm_doc_key as _norm_doc
 
 _TOKEN_RE = re.compile(r'\w+')
-
-
-def _norm_doc(stem: str) -> str:
-    """Whitespace-insensitive document stem (matches trailing-space filenames)."""
-    return re.sub(r'\s+', ' ', (stem or '')).strip().lower()
 
 
 class VectorDatabase:
@@ -43,38 +38,32 @@ class VectorDatabase:
         logger.info(f"VectorDatabase initialized with dimension={dimension}, type={index_type}")
     
     def _initialize_index(self):
-        """Initialize FAISS index"""
+        """Initialize FAISS index (flat L2; ivf/hnsw kept for larger corpora)"""
         try:
             if self.index_type == "flat":
-                # L2 distance (Euclidean)
                 self.index = faiss.IndexFlatL2(self.dimension)
             elif self.index_type == "ivf":
-                # Inverted file index for larger datasets
-                nlist = 100  # number of clusters
+                nlist = 100  # cluster count
                 quantizer = faiss.IndexFlatL2(self.dimension)
                 self.index = faiss.IndexIVFFlat(quantizer, self.dimension, nlist)
             elif self.index_type == "hnsw":
-                # Hierarchical Navigable Small World for fast similarity search
                 self.index = faiss.IndexHNSWFlat(self.dimension, 32)
             else:
-                # Default to flat index
                 self.index = faiss.IndexFlatL2(self.dimension)
-                
+
             logger.info(f"FAISS index initialized: {self.index_type}")
-            
+
         except Exception as e:
             logger.error(f"Error initializing FAISS index: {e}")
-            # Fallback to simple flat index
             self.index = faiss.IndexFlatL2(self.dimension)
-    
+
     def add_documents(self, chunks: List[Dict]):
         """Add document chunks with embeddings to the vector database"""
         if not chunks:
             logger.warning("No chunks provided to add to vector database")
             return
-        
+
         try:
-            # Extract embeddings and metadata
             embeddings = []
             metadata = []
             
@@ -115,15 +104,12 @@ class VectorDatabase:
                 logger.warning("No valid embeddings found in chunks")
                 return
 
-            # Convert to numpy array
             embeddings_array = np.vstack(embeddings).astype('float32')
 
-            # Train index if needed (for IVF)
             if self.index_type == "ivf" and not self.index.is_trained:
                 logger.info("Training IVF index...")
                 self.index.train(embeddings_array)
 
-            # Add to index
             self.index.add(embeddings_array)
 
             # Store metadata; chunks mirror the same dicts (embeddings live only in
@@ -143,22 +129,19 @@ class VectorDatabase:
             if self.index.ntotal == 0:
                 logger.warning("Vector database is empty")
                 return []
-            
-            # Ensure query embedding is the right shape and type
+
             if isinstance(query_embedding, list):
                 query_embedding = np.array(query_embedding)
-            
+
             query_embedding = query_embedding.astype('float32').reshape(1, -1)
-            
-            # Search
+
             distances, indices = self.index.search(query_embedding, min(top_k, self.index.ntotal))
-            
-            # Prepare results
+
             results = []
             for i, (distance, idx) in enumerate(zip(distances[0], indices[0])):
                 if idx < len(self.metadata):
                     result = self.metadata[idx].copy()
-                    result['similarity_score'] = float(1 / (1 + distance))  # Convert distance to similarity
+                    result['similarity_score'] = float(1 / (1 + distance))  # L2 distance -> 0..1
                     result['rank'] = i + 1
                     result['type'] = 'pdf'
                     results.append(result)
@@ -337,11 +320,9 @@ class VectorDatabase:
         """Save the vector index and metadata to disk (atomically — a crash
         mid-save must not leave a readable .index paired with a torn .metadata)"""
         try:
-            # Save FAISS index
             index_path = f"{filepath}.index"
             faiss.write_index(self.index, f"{index_path}.tmp")
 
-            # Save metadata and chunks
             metadata_path = f"{filepath}.metadata"
             with open(f"{metadata_path}.tmp", 'wb') as f:
                 pickle.dump({
@@ -369,7 +350,6 @@ class VectorDatabase:
         search after auto-ingest appends fresh vectors on top of stale ones.
         """
         try:
-            # Load FAISS index
             index_path = f"{filepath}.index"
             if os.path.exists(index_path):
                 self.index = faiss.read_index(index_path)
@@ -378,7 +358,6 @@ class VectorDatabase:
                 self.clear()
                 return False
 
-            # Load metadata and chunks
             metadata_path = f"{filepath}.metadata"
             if os.path.exists(metadata_path):
                 with open(metadata_path, 'rb') as f:

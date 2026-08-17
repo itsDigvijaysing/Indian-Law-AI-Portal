@@ -13,6 +13,11 @@ from functools import lru_cache
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
+# Base filename of the FAISS index/metadata pair, joined onto VECTOR_DB_PATH.
+# Persisted on disk as <name>.index and <name>.metadata — do not rename without
+# migrating existing databases.
+VECTOR_DB_NAME = "indian_law_db"
+
 
 def _find_env_file() -> str:
     """Find .env file - check current dir, then parent (project root)"""

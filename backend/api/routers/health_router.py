@@ -5,6 +5,7 @@ Handles health check and system status endpoints.
 """
 
 from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
 from datetime import datetime
 from ..models.schemas import SystemHealth
 
@@ -20,8 +21,7 @@ async def health_check(request: Request) -> SystemHealth:
     Basic health check endpoint.
     """
     ai_service = getattr(request.app.state, 'ai_service', None)
-    
-    # Determine overall status
+
     if ai_service and ai_service._initialized:
         status = "healthy"
         ai_initialized = True
@@ -61,10 +61,8 @@ async def readiness_check(request: Request):
     Readiness check for deployment health monitoring.
     Returns 200 if the service is ready to handle requests.
     """
-    from fastapi.responses import JSONResponse
-    
     ai_service = getattr(request.app.state, 'ai_service', None)
-    
+
     if ai_service and ai_service._initialized:
         return {"ready": True, "message": "Service is ready"}
     else:

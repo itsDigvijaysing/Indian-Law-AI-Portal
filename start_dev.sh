@@ -2,7 +2,7 @@
 
 # Indian Law AI Portal - Development Startup Script
 
-echo "🚀 Starting Indian Law AI Portal Development Environment"
+echo "Starting Indian Law AI Portal Development Environment"
 echo "======================================================="
 
 # Get the script directory
@@ -11,10 +11,10 @@ cd "$SCRIPT_DIR"
 
 # Check if .env file exists
 if [ ! -f ".env" ]; then
-    echo "⚠️  .env file not found. Creating from template..."
+    echo ".env file not found. Creating from template..."
     cp .env.example .env
-    echo "✅ Created .env file. Please edit it with your Google API key."
-    echo "   Edit .env and set GOOGLE_API_KEY=your_actual_api_key"
+    echo "Created .env file. Edit it and set GROQ_API_KEY=your_actual_api_key"
+    echo "   (or set LLM_PROVIDER=gemini and GOOGLE_API_KEY instead)"
     echo ""
 fi
 
@@ -23,7 +23,7 @@ mkdir -p logs vector_db assets
 
 # Function to start backend
 start_backend() {
-    echo "🐍 Starting Python Backend..."
+    echo "Starting Python Backend..."
 
     # Activate the conda env "my_env" (created with python=3.11 from conda-forge).
     # If conda isn't initialised in this shell, source it; if my_env doesn't exist
@@ -35,13 +35,13 @@ start_backend() {
             conda activate my_env
             echo "Using conda environment: my_env ($(python --version))"
         else
-            echo "⚠️  conda env 'my_env' not found. Create it with:"
+            echo "conda env 'my_env' not found. Create it with:"
             echo "    conda create -n my_env -c conda-forge python=3.11 -y"
             echo "    conda activate my_env"
             echo "    pip install -r requirements.txt groq"
         fi
     else
-        echo "⚠️  conda not found on PATH; using system python: $(python3 --version 2>&1)"
+        echo "conda not found on PATH; using system python: $(python3 --version 2>&1)"
     fi
 
     pip install -q -r "$SCRIPT_DIR/requirements.txt" 2>/dev/null
@@ -51,14 +51,14 @@ start_backend() {
     cd "$SCRIPT_DIR"
     python backend/main.py &
     BACKEND_PID=$!
-    echo "✅ Backend started with PID: $BACKEND_PID"
-    echo "📡 API available at: http://localhost:8000"
-    echo "📚 API docs at: http://localhost:8000/docs"
+    echo "Backend started with PID: $BACKEND_PID"
+    echo "API available at: http://localhost:8000"
+    echo "API docs at: http://localhost:8000/docs"
 }
 
 # Function to start frontend
 start_frontend() {
-    echo "⚛️  Starting React Frontend..."
+    echo "Starting React Frontend..."
     cd "$SCRIPT_DIR/frontend"
     if [ ! -d "node_modules" ]; then
         echo "Installing npm dependencies..."
@@ -67,21 +67,21 @@ start_frontend() {
     npm start &
     FRONTEND_PID=$!
     cd "$SCRIPT_DIR"
-    echo "✅ Frontend started with PID: $FRONTEND_PID"
-    echo "🌐 Frontend available at: http://localhost:3000"
+    echo "Frontend started with PID: $FRONTEND_PID"
+    echo "Frontend available at: http://localhost:3000"
 }
 
 # Function to cleanup processes
 cleanup() {
     echo ""
-    echo "🛑 Shutting down services..."
+    echo "Shutting down services..."
     if [ ! -z "$BACKEND_PID" ]; then
         kill $BACKEND_PID 2>/dev/null
-        echo "✅ Backend stopped"
+        echo "Backend stopped"
     fi
     if [ ! -z "$FRONTEND_PID" ]; then
         kill $FRONTEND_PID 2>/dev/null
-        echo "✅ Frontend stopped"
+        echo "Frontend stopped"
     fi
     exit 0
 }
@@ -95,10 +95,10 @@ sleep 3  # Give backend time to start
 start_frontend
 
 echo ""
-echo "🎉 Both services are starting up!"
-echo "📖 Check the logs above for any errors"
-echo "🔗 Access the application at: http://localhost:3000"
-echo "📋 Press Ctrl+C to stop all services"
+echo "Both services are starting up."
+echo "Check the logs above for any errors"
+echo "Access the application at: http://localhost:3000"
+echo "Press Ctrl+C to stop all services"
 echo ""
 
 # Wait for services

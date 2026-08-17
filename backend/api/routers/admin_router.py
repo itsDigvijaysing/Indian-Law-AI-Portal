@@ -15,7 +15,7 @@ from ..models.schemas import (
     DocumentProcessingResult
 )
 from ..core.ai_service import AIService
-from ..core.config import get_settings
+from ..core.config import get_settings, VECTOR_DB_NAME
 from ..dependencies import get_ai_service, require_admin, safe_error_detail
 
 
@@ -255,7 +255,7 @@ async def save_vector_database(
         settings = get_settings()
         
         if ai_service.vector_db:
-            db_path = os.path.join(settings.VECTOR_DB_PATH, "indian_law_db")
+            db_path = os.path.join(settings.VECTOR_DB_PATH, VECTOR_DB_NAME)
             ai_service.vector_db.save_index(db_path)
             
             return {

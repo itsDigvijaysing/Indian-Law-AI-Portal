@@ -164,20 +164,6 @@ class ErrorResponse(BaseModel):
     )
 
 
-# Agent Models
-class AgentInfo(BaseModel):
-    """Information about a legal agent"""
-    name: str = Field(..., description="Agent name")
-    domain: str = Field(..., description="Legal domain specialty")
-    keywords: List[str] = Field(default=[], description="Domain keywords")
-
-
-class AgentListResponse(BaseModel):
-    """Response model for listing available agents"""
-    agents: List[AgentInfo] = Field(..., description="List of available agents")
-    total_agents: int = Field(..., description="Total number of agents")
-
-
 # Search and Filter Models
 class SearchFilters(BaseModel):
     """Filters for search and retrieval"""
@@ -192,12 +178,3 @@ class AdvancedQueryRequest(QueryRequest):
     filters: Optional[SearchFilters] = Field(None, description="Additional search filters")
     explain_reasoning: bool = Field(False, description="Include detailed reasoning explanation")
     fusion_queries: Optional[int] = Field(None, ge=1, le=10, description="Number of RAG Fusion queries")
-
-
-# Validation Models
-class QueryValidation(BaseModel):
-    """Query validation result"""
-    is_valid: bool = Field(..., description="Whether the query is valid")
-    issues: List[str] = Field(default=[], description="List of validation issues")
-    suggestions: List[str] = Field(default=[], description="Suggestions for improvement")
-    estimated_domain: Optional[str] = Field(None, description="Estimated legal domain")

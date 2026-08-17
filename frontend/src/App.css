@@ -20,7 +20,7 @@
 .app-body.home { grid-template-columns: 1fr; max-width: 820px; }
 .app-body.home .sidebar { display: none; }
 
-/* ---- Left rail ---- */
+/* Left rail */
 .sidebar {
   position: sticky;
   top: 76px;
@@ -34,7 +34,7 @@
 
 .scrim { display: none; }
 
-/* ---- Main column ---- */
+/* Main column */
 .main-content {
   min-width: 0;
   padding: 0;
@@ -50,7 +50,7 @@
   gap: 26px;
 }
 
-/* ---- Conversation thread ---- */
+/* Conversation thread */
 .thread {
   display: flex;
   flex-direction: column;
@@ -80,7 +80,7 @@
   font-size: 0.9rem; font-weight: 700;
 }
 
-/* ---- Sticky composer dock (chat-style) ---- */
+/* Sticky composer dock (chat-style) */
 .composer-dock {
   position: sticky;
   bottom: 0;
@@ -105,7 +105,7 @@
   line-height: 1.55;
 }
 
-/* ---- Thinking / loading ---- */
+/* Thinking / loading */
 .thinking {
   display: flex;
   align-items: center;
@@ -127,7 +127,7 @@
   40% { opacity: 1; transform: translateY(-3px); }
 }
 
-/* ---- Error ---- */
+/* Error */
 .error-state {
   display: flex;
   align-items: center;
@@ -147,7 +147,7 @@
   font-weight: 700; font-size: 0.8rem;
 }
 
-/* ---- Responsive ---- */
+/* Responsive */
 @media (max-width: 860px) {
   .app-body { grid-template-columns: 1fr; gap: 0; padding: 0 18px; }
   .sidebar {

@@ -34,10 +34,9 @@ class EmbeddingGenerator:
                 logger.info(f"Loaded SentenceTransformer model: {self.model_name}")
             
             elif self.model_type == "google":
-                # Get API key from settings (properly loads .env)
                 settings = get_settings()
                 api_key = settings.GOOGLE_API_KEY
-                
+
                 if api_key and api_key != "your_google_api_key_here":
                     genai.configure(api_key=api_key)
                     logger.info(f"Configured Google AI for embeddings: {self.model_name}")
@@ -64,18 +63,16 @@ class EmbeddingGenerator:
                 return embedding
             
             elif self.model_type == "google":
-                # Use Google's embedding API
                 result = genai.embed_content(
                     model=f"models/{self.model_name}",
                     content=text,
                     task_type="retrieval_document"
                 )
                 return np.array(result['embedding'])
-            
+
         except Exception as e:
             logger.error(f"Error generating embedding: {e}")
-            # Return zero vector as fallback
-            return np.zeros(384)  # Default dimension for many models
+            return np.zeros(384)  # default dimension for the local ST models
     
     def generate_embeddings_batch(self, texts: List[str], batch_size: int = 32) -> List[np.ndarray]:
         """Generate embeddings for multiple texts efficiently"""
@@ -83,25 +80,23 @@ class EmbeddingGenerator:
         
         try:
             if self.model_type == "sentence-transformers":
-                # Process in batches for efficiency
                 for i in range(0, len(texts), batch_size):
                     batch = texts[i:i + batch_size]
                     batch_embeddings = self.model.encode(batch, convert_to_numpy=True)
                     embeddings.extend(batch_embeddings)
-                
+
                 logger.info(f"Generated {len(embeddings)} embeddings in batches")
-            
+
             elif self.model_type == "google":
-                # Google API - process individually (rate limiting)
+                # One at a time: the hosted API rate-limits batched calls hard.
                 for text in texts:
                     embedding = self.generate_embedding(text)
                     embeddings.append(embedding)
-                
+
                 logger.info(f"Generated {len(embeddings)} embeddings via Google API")
-            
+
         except Exception as e:
             logger.error(f"Error in batch embedding generation: {e}")
-            # Fallback to individual processing
             for text in texts:
                 embedding = self.generate_embedding(text)
                 embeddings.append(embedding)
@@ -131,15 +126,12 @@ class DocumentEmbedder:
         """Add embeddings to document chunks"""
         if not chunks:
             return chunks
-        
-        # Extract texts for embedding
+
         texts = [chunk['text'] for chunk in chunks]
-        
-        # Generate embeddings
+
         logger.info(f"Generating embeddings for {len(texts)} chunks...")
         embeddings = self.embedding_generator.generate_embeddings_batch(texts)
-        
-        # Add embeddings to chunks
+
         enriched_chunks = []
         for chunk, embedding in zip(chunks, embeddings):
             enriched_chunk = chunk.copy()

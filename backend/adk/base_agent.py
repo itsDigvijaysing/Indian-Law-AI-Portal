@@ -69,6 +69,15 @@ class BaseAgent(ABC):
         """Domain persona and domain-specific analysis guidance for the prompt."""
         pass
 
+    def grounded_reasoning_steps(self, source_count: int) -> List[str]:
+        """Reasoning trace for a grounded answer, shared by the blocking and
+        streaming paths so both report the same steps."""
+        return [
+            f"Routed to {self.name}",
+            f"Answer grounded in {source_count} numbered legal sources",
+            "Inline [n] citations validated against the source list"
+        ]
+
     def process_query(self, query: str, sources: List[Dict]) -> AgentResponse:
         """Generate a grounded, cited answer from numbered source dicts.
 
@@ -86,11 +95,7 @@ class BaseAgent(ABC):
             confidence_score=0.0,  # finalized by AIService._finalize_cited_response
             sources=[],            # finalized by AIService._finalize_cited_response
             agent_type=self.domain,
-            reasoning_steps=[
-                f"Routed to {self.name}",
-                f"Answer grounded in {len(sources)} numbered legal sources",
-                "Inline [n] citations validated against the source list"
-            ]
+            reasoning_steps=self.grounded_reasoning_steps(len(sources))
         )
 
     _ERA_TAG = {"pre-2024": "legacy, pre-1-July-2024", "post-2024": "current, from 1-July-2024"}

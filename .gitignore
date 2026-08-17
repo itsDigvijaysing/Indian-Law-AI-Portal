@@ -57,5 +57,10 @@ frontend/dist/
 .DS_Store
 Thumbs.db
 
-# Claude Code knowledge base (local-only)
+# Agent instruction files / knowledge bases (local-only)
 CLAUDE.md
+AGENTS.md
+.claude/
+.cursorrules
+.specstory/
+.github/copilot-instructions.md

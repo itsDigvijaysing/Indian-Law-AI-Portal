@@ -1,8 +1,5 @@
-/* ============================================================
-   Design system — quiet, editorial, professional.
-   Inspired by Perplexity / NotebookLM: near-white canvas,
-   hairline borders, one restrained accent, generous type.
-   ============================================================ */
+/* Design system: quiet, editorial, professional. Near-white canvas,
+   hairline borders, one restrained accent, generous type. */
 :root {
   /* Neutrals (warm off-white canvas, ink text) */
   --bg: #f7f7f5;

@@ -32,10 +32,10 @@ from collections import OrderedDict
 from typing import List, Dict, Any
 from loguru import logger
 
-
-def _norm_doc(stem: str) -> str:
-    """Whitespace-insensitive document stem (matches trailing-space filenames)."""
-    return re.sub(r'\s+', ' ', (stem or '')).strip().lower()
+try:
+    from .document_registry import norm_doc_key as _norm_doc
+except ImportError:
+    from document_registry import norm_doc_key as _norm_doc
 
 
 class QueryReformulator:
@@ -80,20 +80,18 @@ class QueryReformulator:
             self._cache.move_to_end(key)
             return list(cached)
         try:
-            reformulations = [original_query]  # Always include original
+            reformulations = [original_query]
 
             llm_ok = True
             if self.llm_client:
-                # Use LLM for intelligent reformulation
                 llm_reformulations = self._llm_reformulate(original_query, count)
                 llm_ok = bool(llm_reformulations)
                 reformulations.extend(llm_reformulations)
 
-            # Add rule-based reformulations as backup
+            # Rule-based variants back up the LLM leg when it returns nothing.
             rule_based = self._rule_based_reformulate(original_query, count)
             reformulations.extend(rule_based)
 
-            # Remove duplicates while preserving order
             unique_reformulations = []
             seen = set()
             for query in reformulations:
@@ -102,7 +100,6 @@ class QueryReformulator:
                     unique_reformulations.append(query)
                     seen.add(query_normalized)
 
-            # Ensure we have the desired number of reformulations
             final_reformulations = unique_reformulations[:count + 1]
 
             if llm_ok:
@@ -120,7 +117,7 @@ class QueryReformulator:
 
         except Exception as e:
             logger.error(f"Error in query reformulation: {e}")
-            return [original_query]  # Return original if reformulation fails
+            return [original_query]
     
     def _llm_reformulate(self, query: str, count: int = None) -> List[str]:
         """Use LLM to generate intelligent query reformulations"""
@@ -150,18 +147,17 @@ Generate {count} reformulations as a numbered list:
     def _parse_llm_response(self, response_text: str) -> List[str]:
         """Parse reformulations from LLM response"""
         reformulations = []
-        
-        # Look for numbered list items
+
         lines = response_text.strip().split('\n')
         for line in lines:
             line = line.strip()
-            # Match patterns like "1. query", "1) query", or "• query"
+            # Matches "1. query", "1) query", or "• query"
             match = re.match(r'^(?:\d+[.)]\s*|[•-]\s*)(.*)', line)
             if match:
                 reformulation = match.group(1).strip()
-                if reformulation and len(reformulation) > 10:  # Filter out very short responses
+                if reformulation and len(reformulation) > 10:  # drop truncated fragments
                     reformulations.append(reformulation)
-        
+
         return reformulations
     
     def _rule_based_reformulate(self, query: str, count: int = None) -> List[str]:
@@ -220,13 +216,11 @@ Generate {count} reformulations as a numbered list:
             ("is it legal", "what does the law say about")
         ]
         
-        # Apply transformations
         for old_term, new_term in transformations:
             if old_term in query_lower:
                 new_query = query_lower.replace(old_term, new_term)
                 reformulations.append(new_query.capitalize())
-        
-        # Add contextual reformulations
+
         if any(term in query_lower for term in ["punishment", "penalty", "sentence"]):
             reformulations.append(f"What are the legal consequences of {query_lower.replace('what is the punishment for', '').strip()}")
         
@@ -279,36 +273,29 @@ class RAGFusionRetriever:
         """
         preferred_documents = preferred_documents or set()
         try:
-            # Step 1: Generate query reformulations
             reformulated_queries = reformulations or self.query_reformulator.reformulate_query(query, num_reformulations)
             logger.info(f"Using {len(reformulated_queries)} query variations")
-            
-            # Step 2: Retrieve for each reformulation
-            all_results = {}  # Use dict to track unique documents
-            
+
+            all_results = {}  # chunk_id -> result, deduped across reformulations
+
             for i, ref_query in enumerate(reformulated_queries):
-                # Generate embedding for reformulated query
                 query_embedding = self.embedding_generator.generate_embedding(ref_query)
-                
-                # Search vector database
-                results = self.vector_db.search(query_embedding, top_k * 2)  # Get more for fusion
-                
-                # Add results to collection with source tracking
+                results = self.vector_db.search(query_embedding, top_k * 2)  # over-fetch for fusion
+
                 for result in results:
                     chunk_id = result.get('chunk_id', '')
                     if chunk_id not in all_results:
                         result['reformulation_matches'] = []
                         result['fusion_scores'] = []
                         all_results[chunk_id] = result
-                    
-                    # Track which reformulation matched this result
+
                     all_results[chunk_id]['reformulation_matches'].append({
                         'query': ref_query,
                         'rank': result.get('rank', 999),
                         'similarity': result.get('similarity_score', 0)
                     })
 
-            # Step 2b: Extra retrievers (BM25 today, web search tomorrow) run once
+            # Extra retrievers (BM25 today, web search tomorrow) run once
             # with the ORIGINAL query — reformulations help dense recall, while
             # keyword search's value is exact matching on what the user typed.
             # Their ranked lists fuse like one more reformulation.
@@ -341,7 +328,6 @@ class RAGFusionRetriever:
                     prior = all_results[chunk_id].get('extra_rank', 999)
                     all_results[chunk_id]['extra_rank'] = min(prior, result.get('rank', 999))
 
-            # Step 3: Apply fusion ranking (+ category boost)
             fused_results = self._apply_fusion_ranking(list(all_results.values()))
             if preferred_documents:
                 # Soft boost — 25% lift for in-category chunks. Enough to lift a
@@ -356,7 +342,7 @@ class RAGFusionRetriever:
                         r['in_category'] = True
             fused_results.sort(key=lambda x: x['fusion_score'], reverse=True)
 
-            # Step 4: Optional cross-encoder rerank. Candidates = fused head PLUS
+            # Optional cross-encoder rerank. Candidates = fused head PLUS
             # each extra retriever's top hits AND any in-category chunk — a chunk
             # found only by keyword/label or living in the routed category can
             # fall outside the head yet be exactly what was asked for; the
@@ -389,7 +375,7 @@ class RAGFusionRetriever:
             
         except Exception as e:
             logger.error(f"Error in RAG Fusion retrieval: {e}")
-            # Fallback to simple retrieval
+            # Degrade to plain vector search rather than returning nothing.
             query_embedding = self.embedding_generator.generate_embedding(query)
             return self.vector_db.search(query_embedding, top_k)
     
@@ -423,23 +409,22 @@ class RAGFusionRetriever:
             if not matches:
                 result['fusion_score'] = 0
                 continue
-            
-            # Calculate RRF score
+
             rrf_score = 0
-            k = 60  # RRF parameter
-            
+            k = 60  # standard RRF damping constant
+
             for match in matches:
                 rank = match.get('rank', 999)
                 rrf_score += 1 / (k + rank)
-            
-            # Normalize by number of queries that found this result
+
             result['fusion_score'] = rrf_score
-            result['query_coverage'] = len(matches)  # How many reformulations found this
-            
-            # Add diversity bonus for results found by multiple reformulations
+            result['query_coverage'] = len(matches)
+
+            # Agreement bonus: a chunk several reformulations independently found
+            # is a stronger hit than one found by a single query.
             if len(matches) > 1:
-                result['fusion_score'] *= (1 + 0.1 * len(matches))  # 10% bonus per additional match
-        
+                result['fusion_score'] *= (1 + 0.1 * len(matches))
+
         return results
     
     def get_fusion_statistics(self, results: List[Dict]) -> Dict[str, Any]:

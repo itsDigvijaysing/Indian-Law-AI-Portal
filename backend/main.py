@@ -42,10 +42,9 @@ ai_service = None
 async def lifespan(app: FastAPI):
     """Application lifespan manager"""
     global ai_service
-    
+
     logger.info("Starting Indian Law AI Portal API...")
-    settings = get_settings()
-    
+
     try:
         ai_service = AIService()
         await ai_service.initialize()
@@ -108,7 +107,6 @@ async def general_exception_handler(request, exc):
     )
 
 
-# Include routers
 app.include_router(health_router.router, prefix="/health", tags=["Health"])
 app.include_router(query_router.router, prefix="/api/v1", tags=["Query"])
 app.include_router(admin_router.router, prefix="/api/v1/admin", tags=["Admin"])

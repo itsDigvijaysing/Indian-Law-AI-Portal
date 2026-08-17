@@ -10,7 +10,6 @@ Central service that coordinates all AI components:
 
 import os
 import re
-import sys
 import asyncio
 import threading
 from pathlib import Path
@@ -19,71 +18,18 @@ import google.generativeai as genai
 from loguru import logger
 
 
-class _GroqResponse:
-    """Mimics google.generativeai response shape (.text)."""
-    def __init__(self, text: str):
-        self.text = text
-
-
-class GroqLLMClient:
-    """Adapter giving Groq's chat-completions API the same .generate_content(prompt).text shape the agents expect.
-
-    Handles both plain chat models (llama-3.1-8b-instant) and reasoning models
-    (openai/gpt-oss-20b): the latter emit a separate 'reasoning' channel, so we
-    pass reasoning_effort='low' (fast, minimal reasoning) and only read the final
-    answer content. max_completion_tokens must cover reasoning + answer."""
-
-    def __init__(self, api_key: str, model: str):
-        from groq import Groq
-        self._client = Groq(api_key=api_key)
-        self._model = model
-        self._is_reasoning = 'gpt-oss' in model.lower() or 'reasoning' in model.lower()
-
-    def _params(self, stream: bool) -> dict:
-        p = {
-            "messages": None,  # filled by caller
-            "model": self._model,
-            # 0.0, not 0.3: the same question should give the same answer.
-            # NOTE this does NOT make generation reproducible — Groq's batched
-            # MoE serving still varies long answers run to run. `seed=42` was
-            # measured 2026-07-30 and made no difference (6/6 distinct answers),
-            # so it is deliberately not set. Retrieval IS deterministic; only
-            # the final wording/citation selection drifts.
-            "temperature": 0.0,
-            "max_completion_tokens": 3000,  # room for reasoning + a full answer
-            "stream": stream,
-        }
-        if self._is_reasoning:
-            p["reasoning_effort"] = "low"   # minimal reasoning → fast, cheap, clean content
-        return p
-
-    def generate_content(self, prompt: str) -> _GroqResponse:
-        p = self._params(stream=False)
-        p["messages"] = [{"role": "user", "content": prompt}]
-        completion = self._client.chat.completions.create(**p)
-        return _GroqResponse(completion.choices[0].message.content or "")
-
-    def generate_content_stream(self, prompt: str):
-        """Yield answer text deltas as they arrive (SSE streaming path).
-        Reasoning deltas go to delta.reasoning (ignored); only content is streamed."""
-        p = self._params(stream=True)
-        p["messages"] = [{"role": "user", "content": prompt}]
-        stream = self._client.chat.completions.create(**p)
-        for chunk in stream:
-            delta = chunk.choices[0].delta.content
-            if delta:
-                yield delta
-
 # Handle imports for both module and direct execution
 try:
-    from .config import get_settings
+    from .config import get_settings, VECTOR_DB_NAME
+    from .llm_clients import GroqLLMClient
     from ...adk import AgentRegistry
     from ...rag import (
         DocumentProcessor, EmbeddingGenerator, DocumentEmbedder,
         VectorDatabase, QueryReformulator, RAGFusionRetriever
     )
 except ImportError:
-    from api.core.config import get_settings
+    from api.core.config import get_settings, VECTOR_DB_NAME
+    from api.core.llm_clients import GroqLLMClient
     from adk import AgentRegistry
     from rag import (
         DocumentProcessor, EmbeddingGenerator, DocumentEmbedder,
@@ -116,34 +62,21 @@ class AIService:
         
         try:
             logger.info("Initializing AI Service components...")
-            
-            # 1. Initialize Google AI client (optional - can work without)
+
+            # Every component below tolerates a None llm_client and degrades to
+            # retrieval-only, so a missing API key never blocks startup.
             await self._initialize_llm_client()
-            
-            # 2. Initialize embedding components
             await self._initialize_embedding_components()
-            
-            # 3. Initialize vector database
             await self._initialize_vector_database()
-            
-            # 4. Initialize agents (can work with None llm_client for basic functions)
             await self._initialize_agents()
-            
-            # 5. Initialize RAG components
             await self._initialize_rag_components()
-            
-            # 6. Initialize document processor
             await self._initialize_document_processor()
-            
-            # 7. Load existing data if available
             await self._load_existing_data()
 
             # Mark initialized before auto-ingest so add_documents() can run.
             self._initialized = True
-
-            # 8. Auto-ingest new documents from assets
             await self._auto_ingest_documents()
-            
+
             if self.llm_client:
                 logger.info("AI Service initialization completed successfully (full mode)")
             else:
@@ -186,8 +119,8 @@ class AIService:
     async def _initialize_embedding_components(self):
         """Initialize embedding generator and document embedder"""
         try:
-            # Determine embedding model type and name
-            # Google models: text-embedding-*, gemini-embedding-*, embedding-*
+            # Google's hosted models are the text-embedding-*, gemini-embedding-*
+            # and embedding-* families; anything else is a local ST model.
             embedding_model = self.settings.EMBEDDING_MODEL
             if (embedding_model.startswith("text-embedding") or 
                 embedding_model.startswith("gemini-embedding") or
@@ -217,7 +150,7 @@ class AIService:
             dimension = self.embedding_generator.get_embedding_dimension()
             self.vector_db = VectorDatabase(
                 dimension=dimension,
-                index_type="flat",  # Start with simple flat index
+                index_type="flat",
                 embedding_model=self.settings.EMBEDDING_MODEL
             )
             
@@ -294,7 +227,7 @@ class AIService:
     async def _load_existing_data(self):
         """Load existing vector database if available"""
         try:
-            db_path = os.path.join(self.settings.VECTOR_DB_PATH, "indian_law_db")
+            db_path = os.path.join(self.settings.VECTOR_DB_PATH, VECTOR_DB_NAME)
             if os.path.exists(f"{db_path}.index") and os.path.exists(f"{db_path}.metadata"):
                 success = self.vector_db.load_index(db_path)
                 if success:
@@ -333,13 +266,11 @@ class AIService:
                 f"backend/rag/document_registry.py."
             )
 
-        # Determine which documents are already ingested
         existing_docs = set()
         if self.vector_db and self.vector_db.metadata:
             for meta in self.vector_db.metadata:
                 existing_docs.add(meta.get('document', ''))
 
-        # Find new files not yet in the vector DB
         new_files = []
         for pdf_file in pdf_files:
             stem = Path(pdf_file).stem
@@ -819,11 +750,7 @@ class AIService:
         response_dict = {
             'answer': ''.join(parts),
             'agent_type': agent.domain,
-            'reasoning_steps': [
-                f"Routed to {agent.name}",
-                f"Answer grounded in {len(sources)} numbered legal sources",
-                "Inline [n] citations validated against the source list"
-            ],
+            'reasoning_steps': agent.grounded_reasoning_steps(len(sources)),
         }
         self._finalize_cited_response(response_dict, sources)
         response_dict['retrieved_documents'] = retrieved_count
@@ -851,8 +778,7 @@ class AIService:
             if self._is_meta_query(query):
                 return self._capability_response()
 
-            # Steps 1-3: retrieve → number citation set → route (shared front half,
-            # off the event loop — retrieval and reranking are CPU-heavy)
+            # Off the event loop: retrieval and reranking are CPU-heavy.
             prep = await asyncio.to_thread(self.prepare_query_context, query)
 
             # Local-first grounding: nothing retrieved → explicit refusal, no LLM call
@@ -871,10 +797,8 @@ class AIService:
                     "error": "No suitable agent found"
                 }
 
-            # Step 4: Generate grounded response (LLM call runs off the event loop)
             response = await asyncio.to_thread(selected_agent.process_query, query, sources)
 
-            # Step 5: Validate citations, score confidence, attach the citation table.
             # The no-LLM fallback embeds "[1] Title —" headers that are NOT
             # citations — finalizing it would count them and inflate confidence.
             response_dict = response.model_dump()
@@ -926,11 +850,11 @@ class AIService:
             if self._is_meta_query(query):
                 return self._capability_response()
 
-            # Step 1: Retrieve documents (off the event loop — retrieval includes
-            # an LLM reformulation call, embeddings, BM25 and the reranker).
-            # fusion_queries is passed per-call, never by mutating the shared
-            # reformulator (concurrent requests would race on it).
-            # An explicit document_types filter overrides the auto-router.
+            # Off the event loop: retrieval includes an LLM reformulation call,
+            # embeddings, BM25 and the reranker. fusion_queries is passed
+            # per-call, never by mutating the shared reformulator (concurrent
+            # requests would race on it). An explicit document_types filter
+            # overrides the auto-router.
             preferred, route_meta = (set(), {"category": None}) if (
                 filters and filters.get('document_types')) else self._route(query)
 
@@ -952,7 +876,6 @@ class AIService:
 
             retrieved_docs, reformulated = await asyncio.to_thread(_advanced_retrieve)
 
-            # Step 2: Apply document type filters
             if filters and filters.get('document_types'):
                 allowed_types = set(filters['document_types'])
                 retrieved_docs = [
@@ -967,32 +890,27 @@ class AIService:
                     refusal['applied_filters'] = filters
                 return refusal
 
-            # Step 3: Number the citation set and select agent
             sources = self._number_sources(retrieved_docs)
             context_texts = [source.get('text', '') for source in sources]
             selected_agent = self._select_agent(query, context_texts, route_meta.get('category'))
 
-            # Step 4: Generate response
             if selected_agent:
                 response = await asyncio.to_thread(selected_agent.process_query, query, sources)
                 response_dict = response.model_dump()
 
-                # Step 5: Validate citations, score confidence, attach citation table
-                # (skip for the no-LLM fallback — its "[n] Title" headers are not citations)
+                # Skipped for the no-LLM fallback: its "[n] Title" headers are not citations.
                 if selected_agent.llm_client is not None:
                     self._finalize_cited_response(response_dict, sources)
                 response_dict['retrieved_documents'] = len(retrieved_docs)
                 response_dict['retrieval_sources'] = [self._source_ref(s) for s in sources]
                 response_dict['detected_category'] = route_meta.get('category')
 
-                # Confidence threshold warning
                 if confidence_threshold and response_dict.get('confidence_score', 0) < confidence_threshold:
                     response_dict['answer'] += (
                         f"\n\n**Note:** The confidence score ({response_dict['confidence_score']:.1%}) "
                         f"is below the requested threshold ({confidence_threshold:.1%})."
                     )
 
-                # Add advanced metadata
                 if explain_reasoning:
                     response_dict['reformulated_queries'] = reformulated
                     response_dict['fusion_statistics'] = self.rag_retriever.get_fusion_statistics(retrieved_docs)
@@ -1047,17 +965,13 @@ class AIService:
                 try:
                     logger.info(f"Processing document: {file_path}")
 
-                    # Process document (PDF parsing + embedding are CPU-heavy —
-                    # keep them off the event loop)
+                    # PDF parsing and embedding are CPU-heavy: keep them off the event loop.
                     chunks = await asyncio.to_thread(self.document_processor.process_document, file_path)
                     if not chunks:
                         results["failed"].append({"file": file_path, "error": "No text extracted"})
                         continue
 
-                    # Generate embeddings
                     enriched_chunks = await asyncio.to_thread(self.document_embedder.embed_chunks, chunks)
-
-                    # Add to vector database
                     await asyncio.to_thread(self.vector_db.add_documents, enriched_chunks)
 
                     results["processed"].append({
@@ -1072,9 +986,8 @@ class AIService:
                     logger.error(f"Error processing {file_path}: {e}")
                     results["failed"].append({"file": file_path, "error": str(e)})
             
-            # Save updated database
             if results["total_chunks"] > 0:
-                db_path = os.path.join(self.settings.VECTOR_DB_PATH, "indian_law_db")
+                db_path = os.path.join(self.settings.VECTOR_DB_PATH, VECTOR_DB_NAME)
                 self.vector_db.save_index(db_path)
                 logger.info("Vector database saved")
             
@@ -1127,8 +1040,7 @@ class AIService:
         """Cleanup resources"""
         try:
             if self.vector_db and self._initialized:
-                # Save vector database before cleanup
-                db_path = os.path.join(self.settings.VECTOR_DB_PATH, "indian_law_db")
+                db_path = os.path.join(self.settings.VECTOR_DB_PATH, VECTOR_DB_NAME)
                 self.vector_db.save_index(db_path)
                 logger.info("Vector database saved during cleanup")
             

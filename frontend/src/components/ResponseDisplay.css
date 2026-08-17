@@ -21,7 +21,7 @@
   gap: 12px;
 }
 
-/* ---- Meta line ---- */
+/* Meta line */
 .answer-meta {
   display: flex;
   align-items: center;
@@ -57,7 +57,7 @@
   animation: blink 1.1s ease-in-out infinite;
 }
 
-/* ---- Answer body (editorial reading column) ---- */
+/* Answer body (editorial reading column) */
 .answer-body {
   font-size: 1.02rem;
   line-height: 1.72;
@@ -90,7 +90,7 @@
   animation: blink 1s step-end infinite;
 }
 
-/* ---- Citation chips ---- */
+/* Citation chips */
 .citation-chip {
   display: inline-flex;
   align-items: center;
@@ -121,7 +121,7 @@
   100% { background: var(--accent-weak); color: var(--accent-hover); transform: scale(1); box-shadow: 0 0 0 0 transparent; }
 }
 
-/* ---- Sources (right column, stacked) ---- */
+/* Sources (right column, stacked) */
 .sources-title {
   display: flex; align-items: center; gap: 8px;
   font-size: 0.78rem; font-weight: 600;
@@ -207,7 +207,7 @@
 .also[open] summary::before { content: '▾ '; }
 .also .sources-list { margin-top: 10px; }
 
-/* ---- Retrieval details ---- */
+/* Retrieval details */
 .details-block { border-top: 1px solid var(--border); padding-top: 16px; }
 .details-toggle {
   background: none; border: none; cursor: pointer;

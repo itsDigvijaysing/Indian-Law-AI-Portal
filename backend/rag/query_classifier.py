@@ -14,7 +14,6 @@ Output dict:
   scores         top-3 {category: score} for debugging
 """
 
-import re
 from collections import defaultdict
 
 try:

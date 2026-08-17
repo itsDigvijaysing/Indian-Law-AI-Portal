@@ -6,7 +6,6 @@ Chunks carry real provenance: page ranges, actual legal section labels,
 and the legal references found in their text.
 """
 
-import os
 import re
 from bisect import bisect_right
 from typing import List, Dict, Tuple

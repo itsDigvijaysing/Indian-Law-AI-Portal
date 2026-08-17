@@ -21,6 +21,29 @@ from ..dependencies import get_ai_service, enforce_daily_limit, safe_error_detai
 router = APIRouter()
 
 
+def _to_query_response(result: Dict[str, Any], processing_time_ms: float) -> QueryResponse:
+    """Map an AIService result dict onto the wire response.
+
+    The advanced-only keys (reformulated_queries, fusion_statistics,
+    applied_filters) are absent from the plain /query result and resolve to
+    None, which is what that endpoint already returned.
+    """
+    return QueryResponse(
+        answer=result.get('answer', ''),
+        confidence_score=result.get('confidence_score', 0.0),
+        agent_type=result.get('agent_type', 'Unknown'),
+        sources=result.get('sources', []),
+        reasoning_steps=result.get('reasoning_steps'),
+        retrieved_documents=result.get('retrieved_documents'),
+        retrieval_sources=result.get('retrieval_sources'),
+        detected_category=result.get('detected_category'),
+        reformulated_queries=result.get('reformulated_queries'),
+        fusion_statistics=result.get('fusion_statistics'),
+        applied_filters=result.get('applied_filters'),
+        processing_time_ms=processing_time_ms
+    )
+
+
 @router.get("/usage")
 async def usage_status() -> Dict[str, Any]:
     """Current global daily quota — powers the frontend's live 'N left today'
@@ -50,25 +73,11 @@ async def process_legal_query(
     
     try:
         logger.info(f"Received query: {query_request.query[:100]}...")
-        
-        # Process query through AI service
+
         result = await ai_service.process_query(query_request.query)
-        
-        # Calculate processing time
+
         processing_time = (time.time() - start_time) * 1000
-        
-        # Build response
-        response = QueryResponse(
-            answer=result.get('answer', ''),
-            confidence_score=result.get('confidence_score', 0.0),
-            agent_type=result.get('agent_type', 'Unknown'),
-            sources=result.get('sources', []),
-            reasoning_steps=result.get('reasoning_steps'),
-            retrieved_documents=result.get('retrieved_documents'),
-            retrieval_sources=result.get('retrieval_sources'),
-            detected_category=result.get('detected_category'),
-            processing_time_ms=processing_time
-        )
+        response = _to_query_response(result, processing_time)
 
         logger.info(f"Query processed successfully in {processing_time:.2f}ms")
         return response
@@ -147,21 +156,7 @@ async def process_advanced_query(
         )
 
         processing_time = (time.time() - start_time) * 1000
-
-        response = QueryResponse(
-            answer=result.get('answer', ''),
-            confidence_score=result.get('confidence_score', 0.0),
-            agent_type=result.get('agent_type', 'Unknown'),
-            sources=result.get('sources', []),
-            reasoning_steps=result.get('reasoning_steps'),
-            retrieved_documents=result.get('retrieved_documents'),
-            retrieval_sources=result.get('retrieval_sources'),
-            detected_category=result.get('detected_category'),
-            reformulated_queries=result.get('reformulated_queries'),
-            fusion_statistics=result.get('fusion_statistics'),
-            applied_filters=result.get('applied_filters'),
-            processing_time_ms=processing_time
-        )
+        response = _to_query_response(result, processing_time)
 
         logger.info(f"Advanced query processed in {processing_time:.2f}ms")
         return response

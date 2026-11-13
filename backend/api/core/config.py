@@ -61,12 +61,12 @@ class Settings(BaseSettings):
 
     # Groq Configuration
     GROQ_API_KEY: str = Field(default="")
-    GROQ_MODEL: str = Field(default="llama-3.3-70b-versatile")
+    GROQ_MODEL: str = Field(default="openai/gpt-oss-20b")
 
     # Model Configuration
     LLM_PROVIDER: str = Field(default="gemini")  # "gemini" or "groq"
     LLM_MODEL: str = Field(default="gemini-2.0-flash")
-    EMBEDDING_MODEL: str = Field(default="gemini-embedding-001")
+    EMBEDDING_MODEL: str = Field(default="BAAI/bge-small-en-v1.5")
     
     # Vector Database Configuration
     # (index dimension comes from the embedding model at runtime, not config)

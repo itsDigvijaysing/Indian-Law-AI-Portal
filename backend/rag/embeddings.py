@@ -43,7 +43,8 @@ class EmbeddingGenerator:
                 else:
                     logger.warning("GOOGLE_API_KEY not configured, falling back to sentence-transformers")
                     self.model_type = "sentence-transformers"
-                    self.model = SentenceTransformer("all-MiniLM-L6-v2")
+                    self.model_name = "all-MiniLM-L6-v2"
+                    self.model = SentenceTransformer(self.model_name)
             
             else:
                 raise ValueError(f"Unsupported model type: {self.model_type}")
@@ -52,7 +53,8 @@ class EmbeddingGenerator:
             logger.error(f"Error initializing embedding model: {e}")
             # Fallback to a simple model
             self.model_type = "sentence-transformers"
-            self.model = SentenceTransformer("all-MiniLM-L6-v2")
+            self.model_name = "all-MiniLM-L6-v2"
+            self.model = SentenceTransformer(self.model_name)
             logger.info("Fallback to all-MiniLM-L6-v2 model")
     
     def generate_embedding(self, text: str) -> np.ndarray:

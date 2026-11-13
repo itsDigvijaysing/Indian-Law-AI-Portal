@@ -126,7 +126,7 @@ class DocumentProcessor:
     # Singhal 2015) and the answer presents dead law as current.
     _STRUCK_DOWN_RE = re.compile(
         r'Sections?\s+(\d+[A-Z]{0,2})\s+(?:of[^.]{0,60}\s+)?'
-        r'(?:has|have|was|were)\s+been?\s*(?:struck down|declared unconstitutional)[^.]*\.',
+        r'(?:has|have|was|were)\s+(?:been\s+)?(?:struck down|declared unconstitutional)[^.]*\.',
         re.IGNORECASE
     )
 

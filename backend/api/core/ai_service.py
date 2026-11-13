@@ -686,6 +686,7 @@ class AIService:
             fallback = agent._build_no_llm_response(sources).model_dump() if agent else self._refusal_response()
             fallback['retrieved_documents'] = retrieved_count
             fallback['retrieval_sources'] = [self._source_ref(s) for s in sources]
+            fallback['detected_category'] = route_meta.get('category')
             yield ('token', {'text': fallback['answer']})
             yield ('done', fallback)
             return
@@ -744,6 +745,7 @@ class AIService:
                 'error': stream_error,
                 'retrieved_documents': retrieved_count,
                 'retrieval_sources': [self._source_ref(s) for s in sources],
+                'detected_category': route_meta.get('category'),
             })
             return
 
@@ -755,6 +757,7 @@ class AIService:
         self._finalize_cited_response(response_dict, sources)
         response_dict['retrieved_documents'] = retrieved_count
         response_dict['retrieval_sources'] = [self._source_ref(s) for s in sources]
+        response_dict['detected_category'] = route_meta.get('category')
         yield ('done', response_dict)
 
     async def process_query(self, query: str) -> Dict[str, Any]:
@@ -930,8 +933,11 @@ class AIService:
 
         except Exception as e:
             logger.error(f"Error processing advanced query: {e}")
+            message = self._classify_llm_error(str(e))
+            if sources:
+                message += " The retrieved source passages below are still valid."
             return {
-                "answer": "An error occurred while processing your advanced query.",
+                "answer": message,
                 "confidence_score": 0.0,
                 "sources": [],
                 "agent_type": "Error",

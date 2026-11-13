@@ -40,6 +40,7 @@ def _to_query_response(result: Dict[str, Any], processing_time_ms: float) -> Que
         reformulated_queries=result.get('reformulated_queries'),
         fusion_statistics=result.get('fusion_statistics'),
         applied_filters=result.get('applied_filters'),
+        unsupported_references=result.get('unsupported_references'),
         processing_time_ms=processing_time_ms
     )
 
@@ -194,7 +195,9 @@ async def list_available_agents(
             "agents": agent_info,
             "total_agents": len(agents)
         }
-        
+
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error listing agents: {e}")
         raise HTTPException(

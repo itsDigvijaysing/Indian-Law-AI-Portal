@@ -5,7 +5,7 @@ Pydantic models for API request and response validation.
 """
 
 from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 from datetime import datetime
 
 
@@ -15,7 +15,17 @@ class QueryRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=1000, description="Legal question or query")
     include_sources: bool = Field(True, description="Include source references in response")
     max_results: int = Field(10, ge=1, le=50, description="Maximum number of retrieval results")
-    
+
+    @field_validator('query')
+    @classmethod
+    def _query_has_content(cls, value: str) -> str:
+        # min_length alone admits "   " or "???", which normalize to an empty
+        # query and would still spend a retrieval + LLM call (and daily quota).
+        value = value.strip()
+        if not any(ch.isalnum() for ch in value):
+            raise ValueError("Query must contain at least one letter or digit")
+        return value
+
     model_config = ConfigDict(
         json_schema_extra={
             "example": {

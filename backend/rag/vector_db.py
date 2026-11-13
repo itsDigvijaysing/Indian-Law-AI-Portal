@@ -121,7 +121,10 @@ class VectorDatabase:
             logger.info(f"Added {len(embeddings)} documents to vector database. Total: {self.index.ntotal}")
             
         except Exception as e:
+            # Re-raise: swallowing this made ingestion report the file as
+            # processed although none of its chunks were stored.
             logger.error(f"Error adding documents to vector database: {e}")
+            raise
     
     def search(self, query_embedding: np.ndarray, top_k: int = 10) -> List[Dict]:
         """Search for similar documents using query embedding"""
@@ -139,9 +142,12 @@ class VectorDatabase:
 
             results = []
             for i, (distance, idx) in enumerate(zip(distances[0], indices[0])):
-                if idx < len(self.metadata):
+                # idx is -1 when FAISS has fewer hits than requested; float
+                # error can make a near-zero distance slightly negative, which
+                # would push the score past 1.0 and fail response validation.
+                if 0 <= idx < len(self.metadata):
                     result = self.metadata[idx].copy()
-                    result['similarity_score'] = float(1 / (1 + distance))  # L2 distance -> 0..1
+                    result['similarity_score'] = float(1 / (1 + max(float(distance), 0.0)))  # L2 distance -> 0..1
                     result['rank'] = i + 1
                     result['type'] = 'pdf'
                     results.append(result)

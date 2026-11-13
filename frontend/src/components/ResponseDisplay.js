@@ -4,8 +4,12 @@ import './ResponseDisplay.css';
 
 // Turn validated [n] markers into markdown links the CitationAnchor renders as chips.
 // Only 1-2 digit numbers: bracketed years in legal text ("[1963]") are literals.
-function linkifyCitations(answer) {
-  return (answer || '').replace(/\[(\d{1,2})\](?!\()/g, '[$1](#cite-$1)');
+// And only numbers that are real source ids: the backend leaves quoted legal
+// text such as a judgment paragraph cite "[45]" in place, and a chip for it
+// would point at a source card that does not exist.
+function linkifyCitations(answer, validIds) {
+  return (answer || '').replace(/\[(\d{1,2})\](?!\()/g, (match, n) =>
+    (validIds.has(Number(n)) ? `[${n}](#cite-${n})` : match));
 }
 
 // Flashes `target` (scrolling it into view first) — shared by chip→card and
@@ -92,6 +96,7 @@ function ResponseDisplay({ response }) {
   const uncited = response.streaming ? [] : sources.filter((s) => !s.cited);
   const isAssistant = response.agent_type === 'Assistant';
   const hasSources = sources.length > 0;
+  const sourceIds = new Set(sources.map((s) => s.id));
 
   return (
     <article className={`answer ${hasSources ? 'answer-grid' : ''}`}>
@@ -119,7 +124,7 @@ function ResponseDisplay({ response }) {
 
         <div className="answer-body">
           <ReactMarkdown components={{ a: CitationAnchor }}>
-            {linkifyCitations(response.answer)}
+            {linkifyCitations(response.answer, sourceIds)}
           </ReactMarkdown>
           {response.streaming && <span className="caret" />}
         </div>

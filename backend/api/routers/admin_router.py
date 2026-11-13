@@ -235,7 +235,9 @@ async def clear_vector_database(
                 status_code=503,
                 detail="Vector database not available"
             )
-            
+
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error clearing database: {e}")
         raise HTTPException(
@@ -268,7 +270,9 @@ async def save_vector_database(
                 status_code=503,
                 detail="Vector database not available"
             )
-            
+
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error saving database: {e}")
         raise HTTPException(

@@ -28,6 +28,7 @@ A web-search leg plugs in later by appending one more callable to
 """
 
 import re
+import threading
 from collections import OrderedDict
 from typing import List, Dict, Any
 from loguru import logger
@@ -48,6 +49,8 @@ class QueryReformulator:
         self.num_reformulations = num_reformulations
         # (query, count) -> reformulation list. See reformulate_query.
         self._cache: "OrderedDict[tuple, List[str]]" = OrderedDict()
+        # Requests reformulate from worker threads (asyncio.to_thread).
+        self._cache_lock = threading.Lock()
         logger.info(f"QueryReformulator initialized with {num_reformulations} reformulations")
 
     def reformulate_query(self, original_query: str, num_reformulations: int = None) -> List[str]:
@@ -75,10 +78,11 @@ class QueryReformulator:
         """
         count = num_reformulations if num_reformulations is not None else self.num_reformulations
         key = (original_query, count)
-        cached = self._cache.get(key)
-        if cached is not None:
-            self._cache.move_to_end(key)
-            return list(cached)
+        with self._cache_lock:
+            cached = self._cache.get(key)
+            if cached is not None:
+                self._cache.move_to_end(key)
+                return list(cached)
         try:
             reformulations = [original_query]
 
@@ -103,9 +107,10 @@ class QueryReformulator:
             final_reformulations = unique_reformulations[:count + 1]
 
             if llm_ok:
-                self._cache[key] = list(final_reformulations)
-                while len(self._cache) > self._CACHE_MAX:
-                    self._cache.popitem(last=False)
+                with self._cache_lock:
+                    self._cache[key] = list(final_reformulations)
+                    while len(self._cache) > self._CACHE_MAX:
+                        self._cache.popitem(last=False)
             else:
                 logger.warning(
                     "LLM reformulation returned nothing; serving degraded "
@@ -216,9 +221,12 @@ Generate {count} reformulations as a numbered list:
             ("is it legal", "what does the law say about")
         ]
         
+        # Whole-word matches only: as substrings "fir" fired inside "first" /
+        # "confirm", "how" inside "show", and "bns" inside "bnss".
         for old_term, new_term in transformations:
-            if old_term in query_lower:
-                new_query = query_lower.replace(old_term, new_term)
+            pattern = rf'\b{re.escape(old_term)}\b'
+            if re.search(pattern, query_lower):
+                new_query = re.sub(pattern, new_term, query_lower)
                 reformulations.append(new_query.capitalize())
 
         if any(term in query_lower for term in ["punishment", "penalty", "sentence"]):

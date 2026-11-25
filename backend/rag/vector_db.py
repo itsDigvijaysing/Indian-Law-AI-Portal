@@ -66,7 +66,10 @@ class VectorDatabase:
         try:
             embeddings = []
             metadata = []
-            
+            # Applied only after index.add succeeds: a failed add must not
+            # leave a new model stamp next to vectors from the old model.
+            stamp = None
+
             for chunk in chunks:
                 if 'embedding' not in chunk:
                     logger.warning(f"Chunk missing embedding: {chunk.get('chunk_id', 'unknown')}")
@@ -98,7 +101,7 @@ class VectorDatabase:
                     'char_count': chunk.get('char_count', 0)
                 })
                 if chunk.get('embedding_model'):
-                    self.embedding_model = chunk['embedding_model']
+                    stamp = chunk['embedding_model']
 
             if not embeddings:
                 logger.warning("No valid embeddings found in chunks")
@@ -111,6 +114,8 @@ class VectorDatabase:
                 self.index.train(embeddings_array)
 
             self.index.add(embeddings_array)
+            if stamp:
+                self.embedding_model = stamp
 
             # Store metadata; chunks mirror the same dicts (embeddings live only in
             # the FAISS index — keeping them here doubled the pickle for no reader)
@@ -346,8 +351,10 @@ class VectorDatabase:
             logger.info(f"Saved vector database to {filepath}")
             
         except Exception as e:
+            # Re-raise: callers (admin save, ingestion) must not report success.
             logger.error(f"Error saving vector database: {e}")
-    
+            raise
+
     def load_index(self, filepath: str) -> bool:
         """Load vector index and metadata from disk.
 

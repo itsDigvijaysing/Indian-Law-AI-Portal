@@ -43,6 +43,7 @@ class QueryReformulator:
     """Generates multiple reformulations of user queries using RAG Fusion technique"""
     
     _CACHE_MAX = 256
+    _INFLIGHT_WAIT_S = 30.0
 
     def __init__(self, llm_client=None, num_reformulations: int = 3):
         self.llm_client = llm_client
@@ -51,6 +52,8 @@ class QueryReformulator:
         self._cache: "OrderedDict[tuple, List[str]]" = OrderedDict()
         # Requests reformulate from worker threads (asyncio.to_thread).
         self._cache_lock = threading.Lock()
+        # key -> Event set when the thread computing that key finishes.
+        self._inflight: Dict[tuple, threading.Event] = {}
         logger.info(f"QueryReformulator initialized with {num_reformulations} reformulations")
 
     def reformulate_query(self, original_query: str, num_reformulations: int = None) -> List[str]:
@@ -78,11 +81,33 @@ class QueryReformulator:
         """
         count = num_reformulations if num_reformulations is not None else self.num_reformulations
         key = (original_query, count)
-        with self._cache_lock:
-            cached = self._cache.get(key)
-            if cached is not None:
-                self._cache.move_to_end(key)
-                return list(cached)
+        # Single flight: concurrent first requests for one key wait for the
+        # first one's result instead of each making a different LLM call.
+        owned = None
+        while True:
+            with self._cache_lock:
+                cached = self._cache.get(key)
+                if cached is not None:
+                    self._cache.move_to_end(key)
+                    return list(cached)
+                pending = self._inflight.get(key)
+                if pending is None:
+                    owned = self._inflight[key] = threading.Event()
+                    break
+            # Woken with nothing cached (LLM leg failed): loop, take ownership
+            # and retry. Timed out (owner stuck): compute without owning.
+            if not pending.wait(timeout=self._INFLIGHT_WAIT_S):
+                break
+        try:
+            return self._compute_reformulations(original_query, count, key)
+        finally:
+            if owned is not None:
+                with self._cache_lock:
+                    self._inflight.pop(key, None)
+                owned.set()
+
+    def _compute_reformulations(self, original_query: str, count: int, key: tuple) -> List[str]:
+        """Uncached body of reformulate_query; caches only when the LLM leg worked."""
         try:
             reformulations = [original_query]
 

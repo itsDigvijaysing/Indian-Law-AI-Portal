@@ -20,7 +20,8 @@ class QueryRequest(BaseModel):
     @classmethod
     def _query_has_content(cls, value: str) -> str:
         # min_length alone admits "   " or "???", which normalize to an empty
-        # query and would still spend a retrieval + LLM call (and daily quota).
+        # query and would still spend a retrieval + LLM call (and daily quota,
+        # which the handlers charge only after this validation passes).
         value = value.strip()
         if not any(ch.isalnum() for ch in value):
             raise ValueError("Query must contain at least one letter or digit")
@@ -35,6 +36,12 @@ class QueryRequest(BaseModel):
             }
         }
     )
+
+
+class ValidateRequest(BaseModel):
+    """Body for /validate: QueryRequest's limits without its content check, so
+    "???" gets an is_valid=false report instead of a 422."""
+    query: str = Field(..., min_length=1, max_length=1000, description="Legal question or query")
 
 
 class SourceReference(BaseModel):

@@ -11,7 +11,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from loguru import logger
 
-from ..models.schemas import QueryRequest, QueryResponse, AdvancedQueryRequest
+from ..models.schemas import QueryRequest, QueryResponse, AdvancedQueryRequest, ValidateRequest
 from ..core.ai_service import AIService
 from ..core.config import get_settings
 from ..core.rate_limiter import get_rate_limiter
@@ -56,7 +56,7 @@ async def usage_status() -> Dict[str, Any]:
     return {"enabled": True, **status}
 
 
-@router.post("/query", response_model=QueryResponse, dependencies=[Depends(enforce_daily_limit)])
+@router.post("/query", response_model=QueryResponse)
 async def process_legal_query(
     query_request: QueryRequest,
     ai_service: AIService = Depends(get_ai_service)
@@ -70,8 +70,9 @@ async def process_legal_query(
     3. Selects appropriate domain expert agent
     4. Generates comprehensive legal response
     """
+    await enforce_daily_limit()
     start_time = time.time()
-    
+
     try:
         logger.info(f"Received query: {query_request.query[:100]}...")
 
@@ -91,7 +92,7 @@ async def process_legal_query(
         )
 
 
-@router.post("/query/stream", dependencies=[Depends(enforce_daily_limit)])
+@router.post("/query/stream")
 async def stream_legal_query(
     query_request: QueryRequest,
     ai_service: AIService = Depends(get_ai_service)
@@ -105,6 +106,7 @@ async def stream_legal_query(
     2. `token`  — answer text deltas
     3. `done`   — finalized answer, validated citations, confidence
     """
+    await enforce_daily_limit()
     start_time = time.time()
 
     async def event_stream():
@@ -127,7 +129,7 @@ async def stream_legal_query(
     )
 
 
-@router.post("/query/advanced", response_model=QueryResponse, dependencies=[Depends(enforce_daily_limit)])
+@router.post("/query/advanced", response_model=QueryResponse)
 async def process_advanced_query(
     query_request: AdvancedQueryRequest,
     ai_service: AIService = Depends(get_ai_service)
@@ -141,6 +143,7 @@ async def process_advanced_query(
     - Detailed reasoning explanation
     - Confidence thresholds
     """
+    await enforce_daily_limit()
     start_time = time.time()
     
     try:
@@ -208,7 +211,7 @@ async def list_available_agents(
 
 @router.post("/validate")
 async def validate_query(
-    query_request: QueryRequest
+    query_request: ValidateRequest
 ) -> Dict[str, Any]:
     """
     Validate a legal query without processing it.
@@ -229,7 +232,10 @@ async def validate_query(
         }
         
         # Basic validation
-        if len(query) < 10:
+        if not any(ch.isalnum() for ch in query):
+            validation_result["is_valid"] = False
+            validation_result["issues"].append("Query must contain at least one letter or digit.")
+        elif len(query) < 10:
             validation_result["is_valid"] = False
             validation_result["issues"].append("Query is too short. Please provide more details.")
         

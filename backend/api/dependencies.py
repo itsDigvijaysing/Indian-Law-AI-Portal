@@ -50,9 +50,11 @@ def safe_error_detail(public_message: str, exc: Exception) -> str:
 async def enforce_daily_limit() -> None:
     """Consume one unit of the global daily quota, or reject with 429.
 
-    Applied to every endpoint that triggers an LLM answer generation. The 429
-    `detail` is a structured object the frontend renders as its rate-limit
-    modal (kind, message, limit, used, reset_at).
+    Awaited at the top of every handler that triggers an LLM answer. Not a
+    route dependency: FastAPI runs those before body validation, so a 422
+    would still spend quota. The 429 `detail` is a structured object the
+    frontend renders as its rate-limit modal (kind, message, limit, used,
+    reset_at).
     """
     settings = get_settings()
     if not settings.RATE_LIMIT_ENABLED:

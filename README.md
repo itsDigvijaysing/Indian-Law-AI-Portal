@@ -282,4 +282,8 @@ FastAPI · React 18 · FAISS · BM25 (rank_bm25) · Sentence Transformers (bge-s
 
 > **Disclaimer.** Educational/research tool. Always consult a qualified legal professional for official advice. Keep your API keys out of version control.
 
-MIT License.
+## License
+
+Released under the [MIT License](LICENSE). Copyright (c) 2025-2026 Digvijaysing Rajput (itsdigvijaysing).
+
+The license covers this project's code. The law PDFs it ingests are official Government of India publications, downloaded separately into `assets/`.

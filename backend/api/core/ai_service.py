@@ -151,7 +151,9 @@ class AIService:
             self.vector_db = VectorDatabase(
                 dimension=dimension,
                 index_type="flat",
-                embedding_model=self.settings.EMBEDDING_MODEL
+                # The model actually loaded, which differs from the configured
+                # one after a fallback; the index mismatch check compares this.
+                embedding_model=self.embedding_generator.model_name
             )
             
             logger.info(f"Vector database initialized with dimension: {dimension}")
@@ -774,6 +776,7 @@ class AIService:
 
         retrieved_count = 0
         sources: List[Dict] = []
+        route_meta: Dict[str, Any] = {"category": None}
         try:
             logger.info(f"Processing query: {query[:100]}...")
 
@@ -827,6 +830,7 @@ class AIService:
                 "error": str(e),
                 "retrieved_documents": retrieved_count,
                 "retrieval_sources": [self._source_ref(s) for s in sources],
+                "detected_category": route_meta.get("category"),
             }
 
     async def process_advanced_query(
@@ -846,6 +850,7 @@ class AIService:
 
         retrieved_docs: List[Dict] = []
         sources: List[Dict] = []
+        route_meta: Dict[str, Any] = {"category": None}
         try:
             logger.info(f"Processing advanced query: {query[:100]}...")
 
@@ -944,6 +949,7 @@ class AIService:
                 "error": str(e),
                 "retrieved_documents": len(retrieved_docs),
                 "retrieval_sources": [self._source_ref(s) for s in sources],
+                "detected_category": route_meta.get("category"),
             }
 
     async def add_documents(self, file_paths: List[str]) -> Dict[str, Any]:
@@ -1025,7 +1031,7 @@ class AIService:
                 "agents": len(self.agent_registry.get_all_agents()) if self.agent_registry else 0,
                 "models": {
                     "llm": llm_model,
-                    "embedding": self.settings.EMBEDDING_MODEL,
+                    "embedding": getattr(self.embedding_generator, 'model_name', self.settings.EMBEDDING_MODEL),
                     "reranker": self.settings.RERANK_MODEL if self.settings.RERANK_ENABLED else "disabled"
                 },
                 "configuration": {

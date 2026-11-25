@@ -253,10 +253,10 @@ A bash regression script that exercises every endpoint (health, stats, validate,
 |---|---|---|
 | `LLM_PROVIDER` | `gemini` | `groq` or `gemini` (`.env.example` ships with `groq`) |
 | `GROQ_API_KEY` | – | Required when `LLM_PROVIDER=groq` |
-| `GROQ_MODEL` | `llama-3.3-70b-versatile` | Groq model ID, the code default; **override to `openai/gpt-oss-20b`** (`.env.example` + the Docker image already do), a cheap reasoning model that beats 70B on legal accuracy per rupee |
+| `GROQ_MODEL` | `openai/gpt-oss-20b` | Groq model ID: a cheap reasoning model that beats 70B on legal accuracy per rupee |
 | `GOOGLE_API_KEY` | – | Required when `LLM_PROVIDER=gemini` |
 | `LLM_MODEL` | `gemini-2.0-flash` | Gemini model |
-| `EMBEDDING_MODEL` | `gemini-embedding-001` | Code default is the Google model, so **always override to a local one** (`.env.example` sets `BAAI/bge-small-en-v1.5`); the Google path rate-limits during ingestion on the free tier |
+| `EMBEDDING_MODEL` | `BAAI/bge-small-en-v1.5` | Local embedding model (384-dim). Changing it needs an index rebuild; avoid `gemini-embedding-001`, which rate-limits during ingestion on the free tier |
 | `RAG_FUSION_QUERIES` | `3` | Query reformulation count |
 | `TOP_K_RETRIEVAL` | `10` | Top-K fused results |
 | `RERANK_ENABLED` | `true` | Cross-encoder rerank of the fused head |

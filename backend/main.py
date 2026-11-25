@@ -69,7 +69,7 @@ _settings = get_settings()
 app = FastAPI(
     title="Indian Law AI Portal",
     description="AI-powered legal query assistant for Indian laws using RAG and agentic AI",
-    version="1.0.0",
+    version="1.0.1",
     docs_url="/docs" if _settings.DEBUG_MODE else None,
     redoc_url="/redoc" if _settings.DEBUG_MODE else None,
     # Keep the raw schema hidden when docs are disabled.
@@ -123,7 +123,7 @@ else:
         """Root endpoint with API information"""
         info = {
             "message": "Indian Law AI Portal API",
-            "version": "1.0.0",
+            "version": "1.0.1",
             "status": "operational",
         }
         if _settings.DEBUG_MODE:

@@ -53,8 +53,12 @@ function QueryForm({ onSubmit, loading, home }) {
     ta.style.height = Math.min(ta.scrollHeight, 220) + 'px';
   }, [query]);
 
+  // Mirrors the backend's QueryRequest check: "   " or "???" is rejected there
+  // with a 422, so don't send it (it would still cost a unit of daily quota).
+  const hasContent = /[\p{L}\p{N}]/u.test(query);
+
   const submit = () => {
-    if (!query.trim() || loading) return;
+    if (!hasContent || loading) return;
     const requestData = { query: query.trim(), include_sources: true, max_results: 10 };
     if (advancedMode) {
       requestData.advanced = true;
@@ -107,7 +111,7 @@ function QueryForm({ onSubmit, loading, home }) {
             <button
               type="submit"
               className="send-btn"
-              disabled={loading || !query.trim()}
+              disabled={loading || !hasContent}
               aria-label="Send"
             >
               {loading ? <span className="send-spinner" /> : <ArrowUpIcon />}

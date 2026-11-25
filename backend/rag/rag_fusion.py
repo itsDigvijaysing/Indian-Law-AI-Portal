@@ -165,6 +165,15 @@ Generate {count} reformulations as a numbered list:
 
         return reformulations
     
+    @staticmethod
+    def _term_pattern(term: str, all_terms: set) -> str:
+        """Whole-word regex for a term that also accepts its plural."""
+        if term + 's' in all_terms:
+            return rf'\b{re.escape(term)}\b'
+        if term.endswith('y'):
+            return rf'\b{re.escape(term[:-1])}(?:y|ies)\b'
+        return rf'\b{re.escape(term)}s?\b'
+
     def _rule_based_reformulate(self, query: str, count: int = None) -> List[str]:
         """Generate reformulations using rule-based patterns"""
         count = count if count is not None else self.num_reformulations
@@ -222,9 +231,12 @@ Generate {count} reformulations as a numbered list:
         ]
         
         # Whole-word matches only: as substrings "fir" fired inside "first" /
-        # "confirm", "how" inside "show", and "bns" inside "bnss".
+        # "confirm", "how" inside "show", and "bns" inside "bnss". Plurals
+        # ("firs", "penalties") still match, except where the plural is itself
+        # another term (bns + s = bnss).
+        all_terms = {old for old, _ in transformations}
         for old_term, new_term in transformations:
-            pattern = rf'\b{re.escape(old_term)}\b'
+            pattern = self._term_pattern(old_term, all_terms)
             if re.search(pattern, query_lower):
                 new_query = re.sub(pattern, new_term, query_lower)
                 reformulations.append(new_query.capitalize())

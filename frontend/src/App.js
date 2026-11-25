@@ -105,6 +105,16 @@ function App() {
       err.rateLimit = body.detail || body.error || {};
       throw err;
     }
+    // Any other 4xx (e.g. a 422 for a query with no letters or digits) rejects
+    // the request itself: /query runs the same validation and charges the
+    // daily quota again, so mark it final instead of falling back. 404 is
+    // left out: that means the stream route is missing, and /query may work.
+    if (res.status >= 400 && res.status < 500 && res.status !== 404) {
+      const body = await res.json().catch(() => ({}));
+      const err = new Error(`Request rejected (${res.status})`);
+      err.response = { status: res.status, data: body };
+      throw err;
+    }
     if (!res.ok || !res.body) throw new Error(`Stream failed (${res.status})`);
 
     const reader = res.body.getReader();
@@ -169,7 +179,7 @@ function App() {
         } catch (streamErr) {
           // A 429 is definitive (quota spent), not a transient stream glitch —
           // don't retry the /query endpoint, just propagate to the limit handler.
-          if (extractRateLimit(streamErr)) throw streamErr;
+          if (extractRateLimit(streamErr) || streamErr.response) throw streamErr;
           console.warn('Streaming failed, using standard endpoint:', streamErr);
           patchTurn(id, { data: null, streaming: true });
           const result = await axios.post(`${API_BASE_URL}/api/v1/query`, requestData);
